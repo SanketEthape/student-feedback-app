@@ -29,7 +29,7 @@ router.post('/submit/:link', async (req, res) => {
         if (form.faculty.geminiApiKey) {
             try {
                 const genAI = new GoogleGenerativeAI(form.faculty.geminiApiKey);
-                const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+                const model = genAI.getGenerativeModel({ model: 'gemma-3-1b-it' });
                 const weak = scored.filter(a => a.isCorrect === false).map(a => a.topic);
                 const strong = scored.filter(a => a.isCorrect === true).map(a => a.topic);
                 const textAnswers = scored.filter(a => a.isCorrect === null);

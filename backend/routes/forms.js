@@ -13,7 +13,7 @@ router.post('/generate', auth, async (req, res) => {
             return res.status(400).json({ message: 'Please add your Gemini API key in Settings first.' });
 
         const genAI = new GoogleGenerativeAI(faculty.geminiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemma-3-1b-it' });
 
         const prompt = `
 You are an educational assessment expert. Based on the following syllabus, generate 10 feedback questions that check if students understood each topic conceptually (not technically). 

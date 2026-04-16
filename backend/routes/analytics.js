@@ -37,7 +37,7 @@ router.get('/form/:formId', auth, async (req, res) => {
         const faculty = await Faculty.findById(req.faculty.id);
         if (faculty.geminiApiKey) {
             const genAI = new GoogleGenerativeAI(faculty.geminiApiKey);
-            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+            const model = genAI.getGenerativeModel({ model: 'gemma-3-1b-it' });
             const weakTopics = topicStats.filter(t => t.pct < 50).map(t => t.topic);
             const strongTopics = topicStats.filter(t => t.pct >= 75).map(t => t.topic);
             const prompt = `
