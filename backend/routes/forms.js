@@ -16,25 +16,30 @@ router.post('/generate', auth, async (req, res) => {
         const model = genAI.getGenerativeModel({ model: 'gemma-3-1b-it' });
 
         const prompt = `
-You are an educational assessment expert. Based on the following syllabus, generate 10 feedback questions that check if students understood each topic conceptually (not technically). 
-Avoid code or formula-based questions. Focus on understanding, application, and real-world relevance.
+You are an educational assessment expert. Based on the following syllabus, generate 10 unique feedback questions.
 
 Syllabus:
 ${syllabus}
 
-Return ONLY a valid JSON array (no markdown, no explanation) in this exact format:
+CRITICAL INSTRUCTIONS:
+1. Do NOT use placeholders like "Option A" or "Topic Name". Write ACTUAL content based on the syllabus.
+2. For MCQs: Create 4 plausible, distinct answers.
+3. For Scale: Use ["1","2","3","4","5"].
+4. For Text: Use an empty array [].
+
+EXAMPLE OF EXPECTED CONTENT (Follow this quality, but use the provided syllabus):
 [
   {
-    "topic": "Topic Name",
-    "question": "The question text",
+    "topic": "Cloud Computing",
+    "question": "Which cloud characteristic allows a system to handle increased load by adding resources?",
     "type": "mcq",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
-    "correctOption": "Option A"
+    "options": ["Scalability", "Security", "Hard-coding", "Latency"],
+    "correctOption": "Scalability"
   }
 ]
-Mix question types: 6 mcq, 2 scale (options: ["1","2","3","4","5"]), 2 text (options: []).
-For scale and text types, correctOption should be "".
-`;
+
+Return ONLY a valid JSON array. No markdown, no "Here is your JSON".
+Mix: 6 mcq, 2 scale, 2 text.`;
 
         const result = await model.generateContent(prompt);
         const text = result.response.text().replace(/```json|```/g, '').trim();
