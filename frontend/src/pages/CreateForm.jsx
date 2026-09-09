@@ -22,7 +22,7 @@ export default function CreateForm() {
             <h2 style={{ marginBottom: 8 }}>Create Feedback Form</h2>
             <p style={{ color: 'var(--muted)', marginBottom: 28, fontSize: 14 }}>Paste your unit syllabus and AI will generate relevant feedback questions</p>
 
-            {err && <div style={{ background: 'rgba(247,106,106,0.1)', border: '1px solid var(--danger)', borderRadius: 8, padding: '12px 16px', marginBottom: 20, color: 'var(--danger)', fontSize: 14 }}>{err}</div>}
+            {err && <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid var(--danger)', borderRadius: 8, padding: '12px 16px', marginBottom: 20, color: 'var(--danger)', fontSize: 14 }}>{err}</div>}
 
             <div className="card">
                 <form onSubmit={submit}>

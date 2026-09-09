@@ -246,7 +246,7 @@ export default function StudentForm() {
                     <span
                       className="tag"
                       style={{
-                        background: "rgba(124,106,247,0.15)",
+                        background: "rgba(79,110,247,0.1)",
                         color: "var(--accent)",
                         fontSize: 11,
                       }}
@@ -282,13 +282,10 @@ export default function StudentForm() {
 
                             background:
                               answers[q._id] === opt
-                                ? "rgba(124,106,247,0.15)"
-                                : "rgba(255,255,255,0.03)",
-
-                            border: `1px solid ${answers[q._id] === opt
-                              ? "var(--accent)"
-                              : "var(--border)"
-                              }`,
+                                ? "rgba(79,110,247,0.1)"
+                                : "#f9fafb",
+                            border: `1px solid ${answers[q._id] === opt ? "var(--accent)" : "var(--border)"}`,
+                            transition: "all 0.15s",
                           }}
                         >
                           <input
@@ -541,9 +538,12 @@ export default function StudentForm() {
               <div
                 className="card"
                 style={{
-                  marginBottom: 20,
-                  borderLeft:
-                    "4px solid var(--accent)",
+                  textAlign: "left",
+                  background: "rgba(79,110,247,0.06)",
+                  border: "1px solid rgba(79,110,247,0.15)",
+                  borderRadius: 12,
+                  padding: "20px 24px",
+                  borderLeft: "3px solid var(--accent)",
                 }}
               >
                 <h3 style={{ marginBottom: 10 }}>

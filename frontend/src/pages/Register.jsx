@@ -24,7 +24,7 @@ export default function Register() {
             <div className="card" style={{ width: 420 }}>
                 <h2 style={{ marginBottom: 8 }}>Create Faculty Account</h2>
                 <p style={{ color: 'var(--muted)', marginBottom: 24, fontSize: 14 }}>Join EduPulse to create intelligent feedback forms</p>
-                {err && <div style={{ background: 'rgba(247,106,106,0.1)', border: '1px solid var(--danger)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: 'var(--danger)', fontSize: 14 }}>{err}</div>}
+                {err && <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid var(--danger)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: 'var(--danger)', fontSize: 14 }}>{err}</div>}
                 <form onSubmit={submit}>
                     {[['name', 'Name', 'text'], ['email', 'Email', 'email'], ['department', 'Department', 'text'], ['password', 'Password', 'password']].map(([key, label, type]) => (
                         <div key={key} style={{ marginBottom: 14 }}>

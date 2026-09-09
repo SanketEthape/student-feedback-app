@@ -596,6 +596,77 @@ router.delete('/:id', auth, async (req, res) => {
     }
 });
 
+// Toggle approval of a single question
+router.patch('/:id/questions/:qIndex/approve', auth, async (req, res) => {
+    try {
+        const form = await Form.findOne({ _id: req.params.id, faculty: req.faculty.id });
+        if (!form) return res.status(404).json({ message: 'Form not found' });
+        const idx = parseInt(req.params.qIndex);
+        if (idx < 0 || idx >= form.questions.length) return res.status(400).json({ message: 'Invalid question index' });
+        form.questions[idx].isApproved = !form.questions[idx].isApproved;
+        form.markModified('questions');
+        await form.save();
+        res.json(form);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Regenerate / reframe a single question using Gemini
+router.patch('/:id/questions/:qIndex/regenerate', auth, async (req, res) => {
+    try {
+        const form = await Form.findOne({ _id: req.params.id, faculty: req.faculty.id });
+        if (!form) return res.status(404).json({ message: 'Form not found' });
+        const idx = parseInt(req.params.qIndex);
+        if (idx < 0 || idx >= form.questions.length) return res.status(400).json({ message: 'Invalid question index' });
+
+        const faculty = await Faculty.findById(req.faculty.id);
+        if (!faculty.geminiApiKey) return res.status(400).json({ message: 'Please add your Gemini API key in Settings first.' });
+
+        const currentQ = form.questions[idx];
+        const genAI = new GoogleGenerativeAI(faculty.geminiApiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+
+        const prompt = `You are an educational assessment expert.
+The syllabus for this form is:
+${form.syllabus}
+
+Reframe or regenerate the following question about the topic "${currentQ.topic}".
+The new question must be DIFFERENT from the original but still test the same topic.
+Original question: "${currentQ.question}"
+Original type: "${currentQ.type}"
+
+CRITICAL INSTRUCTIONS:
+- Keep the same question type: "${currentQ.type}"
+- For MCQ: provide exactly 4 plausible options and one correctOption.
+- For Scale: options must be ["1","2","3","4","5"], correctOption = "".
+- For Text: options = [], correctOption = "".
+- Do NOT use placeholder text. Use real content from the syllabus.
+
+Return ONLY a single valid JSON object (NOT an array) with exactly these fields:
+{
+  "topic": "${currentQ.topic}",
+  "question": "...",
+  "type": "${currentQ.type}",
+  "options": [...],
+  "correctOption": "..."
+}`;
+
+        const result = await model.generateContent(prompt);
+        const text = result.response.text().replace(/\`\`\`json|\`\`\`/g, '').trim();
+        const newQ = JSON.parse(text);
+
+        form.questions[idx].question = newQ.question;
+        form.questions[idx].options = newQ.options || [];
+        form.questions[idx].correctOption = newQ.correctOption || '';
+        form.questions[idx].isApproved = false; // reset approval after regeneration
+        form.markModified('questions');
+        await form.save();
+        res.json(form);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: err.message });
+    }
+});
 
 module.exports = router;
-

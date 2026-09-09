@@ -43,6 +43,12 @@ const QuestionSchema = new mongoose.Schema({
     expectedAnswer: {
         type: String,
         default: ''
+    },
+
+    // Faculty approval status
+    isApproved: {
+        type: Boolean,
+        default: false
     }
 });
 

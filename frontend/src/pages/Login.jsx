@@ -24,7 +24,7 @@ export default function Login() {
             <div className="card" style={{ width: 400 }}>
                 <h2 style={{ marginBottom: 8 }}>Faculty Login</h2>
                 <p style={{ color: 'var(--muted)', marginBottom: 24, fontSize: 14 }}>Sign in to manage your feedback forms</p>
-                {err && <div style={{ background: 'rgba(247,106,106,0.1)', border: '1px solid var(--danger)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: 'var(--danger)', fontSize: 14 }}>{err}</div>}
+                {err && <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid var(--danger)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: 'var(--danger)', fontSize: 14 }}>{err}</div>}
                 <form onSubmit={submit}>
                     <div style={{ marginBottom: 14 }}>
                         <label style={{ fontSize: 13, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Email</label>
