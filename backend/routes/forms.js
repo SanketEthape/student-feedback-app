@@ -625,7 +625,7 @@ router.patch('/:id/questions/:qIndex/regenerate', auth, async (req, res) => {
 
         const currentQ = form.questions[idx];
         const genAI = new GoogleGenerativeAI(faculty.geminiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
 
         const prompt = `You are an educational assessment expert.
 The syllabus for this form is:
