@@ -653,7 +653,7 @@ Return ONLY a single valid JSON object (NOT an array) with exactly these fields:
 }`;
 
         const result = await model.generateContent(prompt);
-        const text = result.response.text().replace(/\`\`\`json|\`\`\`/g, '').trim();
+        const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
         const newQ = JSON.parse(text);
 
         form.questions[idx].question = newQ.question;
