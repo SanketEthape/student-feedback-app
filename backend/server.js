@@ -20,14 +20,16 @@ const app = express();
 const buildAllowedOrigins = () => {
   const origins = new Set();
 
+  const clean = (url) => url.trim().replace(/\/+$/, '');
+
   // Primary frontend URL from env (required in production)
   if (process.env.FRONTEND_URL) {
-    process.env.FRONTEND_URL.split(',').map(u => u.trim()).filter(Boolean).forEach(u => origins.add(u));
+    process.env.FRONTEND_URL.split(',').map(clean).filter(Boolean).forEach(u => origins.add(u));
   }
 
   // Extra origins (comma-separated) — optional
   if (process.env.CORS_ORIGINS) {
-    process.env.CORS_ORIGINS.split(',').map(u => u.trim()).filter(Boolean).forEach(u => origins.add(u));
+    process.env.CORS_ORIGINS.split(',').map(clean).filter(Boolean).forEach(u => origins.add(u));
   }
 
   // Localhost fallback only in non-production environments
@@ -76,8 +78,8 @@ const PORT = process.env.PORT || 5000;
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('MongoDB connected');
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on port ${PORT} (bound to 0.0.0.0)`);
     });
   })
   .catch((err) => {
