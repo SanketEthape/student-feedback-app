@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -21,10 +22,22 @@ const StudentProtected = ({ children }) => {
   return localStorage.getItem('studentToken') ? children : <Navigate to="/student/login" />;
 };
 
+const FacultyLayout = ({ children }) => (
+  <Protected>
+    <Navbar />
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 16px' }}>
+      {children}
+    </div>
+  </Protected>
+);
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public Landing Page */}
+        <Route path="/" element={<Landing />} />
+
         {/* Faculty Auth */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
@@ -40,23 +53,17 @@ export default function App() {
           </StudentProtected>
         } />
 
-        {/* Student Form (auth enforced inside the component via redirect) */}
+        {/* Student Form */}
         <Route path="/f/:link" element={<StudentForm />} />
 
         {/* Faculty Protected Routes */}
-        <Route path="/*" element={
-          <Protected>
-            <Navbar />
-            <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 16px' }}>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/create" element={<CreateForm />} />
-                <Route path="/analytics/:id" element={<FormAnalytics />} />
-                <Route path="/settings" element={<Settings />} />
-              </Routes>
-            </div>
-          </Protected>
-        } />
+        <Route path="/dashboard" element={<FacultyLayout><Dashboard /></FacultyLayout>} />
+        <Route path="/create" element={<FacultyLayout><CreateForm /></FacultyLayout>} />
+        <Route path="/analytics/:id" element={<FacultyLayout><FormAnalytics /></FacultyLayout>} />
+        <Route path="/settings" element={<FacultyLayout><Settings /></FacultyLayout>} />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

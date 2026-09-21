@@ -22,13 +22,13 @@ export default function Navbar() {
             justifyContent: 'space-between',
             boxShadow: '0 1px 6px rgba(30,34,53,0.07)'
         }}>
-            <Link to="/" style={{ textDecoration: 'none' }}>
+            <Link to="/dashboard" style={{ textDecoration: 'none' }}>
                 <span style={{ fontFamily: 'DM Serif Display', fontSize: 22, color: 'var(--accent)', letterSpacing: '-0.3px' }}>
                     EduPulse
                 </span>
             </Link>
             <div style={{ display: 'flex', gap: 28, alignItems: 'center' }}>
-                <Link to="/" style={navStyle('/')}>Dashboard</Link>
+                <Link to="/dashboard" style={navStyle('/dashboard')}>Dashboard</Link>
                 <Link to="/create" style={navStyle('/create')}>New Form</Link>
                 <Link to="/settings" style={navStyle('/settings')}>Settings</Link>
                 <button className="btn btn-secondary" style={{ padding: '6px 16px', fontSize: 13 }} onClick={logout}>Logout</button>

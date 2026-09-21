@@ -14,7 +14,7 @@ export default function Login() {
             const { data } = await api.post('/auth/login', form);
             localStorage.setItem('token', data.token);
             localStorage.setItem('faculty', JSON.stringify(data.faculty));
-            navigate('/');
+            navigate('/dashboard');
         } catch (e) { setErr(e.response?.data?.message || 'Login failed'); }
         finally { setLoading(false); }
     };
@@ -41,6 +41,9 @@ export default function Login() {
                 <p style={{ textAlign: 'center', marginTop: 16, fontSize: 14, color: 'var(--muted)' }}>
                     No account? <Link to="/register" style={{ color: 'var(--accent)' }}>Register</Link>
                 </p>
+                <div style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: 'var(--muted)' }}>
+                    Are you a student? <Link to="/student/login" style={{ color: 'var(--accent)' }}>Student Login</Link>
+                </div>
             </div>
         </div>
     );
