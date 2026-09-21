@@ -3,6 +3,7 @@ const auth = require('../middleware/auth');
 const Faculty = require('../models/Faculty');
 const Form = require('../models/Form');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { decrypt } = require('../utils/encryption');
 
 // ======================================================
 // Generate questions from syllabus using Gemini
@@ -28,18 +29,19 @@ router.post('/generate', auth, async (req, res) => {
             });
         }
 
-        // Check Gemini API key
-        if (!faculty.geminiApiKey) {
+        // Decrypt Gemini API key
+        const apiKey = faculty.geminiApiKey ? decrypt(faculty.geminiApiKey) : '';
+        if (!apiKey) {
             return res.status(400).json({
                 message: 'Please add your Gemini API key in Settings first.'
             });
         }
 
         // Initialize Gemini
-        const genAI = new GoogleGenerativeAI(faculty.geminiApiKey);
+        const genAI = new GoogleGenerativeAI(apiKey);
 
         const model = genAI.getGenerativeModel({
-            model: 'gemini-3.1-flash-lite'
+            model: 'gemini-1.5-flash'
         });
 
         // ==================================================
@@ -621,11 +623,12 @@ router.patch('/:id/questions/:qIndex/regenerate', auth, async (req, res) => {
         if (idx < 0 || idx >= form.questions.length) return res.status(400).json({ message: 'Invalid question index' });
 
         const faculty = await Faculty.findById(req.faculty.id);
-        if (!faculty.geminiApiKey) return res.status(400).json({ message: 'Please add your Gemini API key in Settings first.' });
+        const apiKey = faculty?.geminiApiKey ? decrypt(faculty.geminiApiKey) : '';
+        if (!apiKey) return res.status(400).json({ message: 'Please add your Gemini API key in Settings first.' });
 
         const currentQ = form.questions[idx];
-        const genAI = new GoogleGenerativeAI(faculty.geminiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
         const prompt = `You are an educational assessment expert.
 The syllabus for this form is:

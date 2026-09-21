@@ -4,6 +4,7 @@ const Form = require('../models/Form');
 const Response = require('../models/Response');
 const Faculty = require('../models/Faculty');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { decrypt } = require('../utils/encryption');
 
 router.get('/form/:formId', auth, async (req, res) => {
     try {
@@ -35,9 +36,10 @@ router.get('/form/:formId', auth, async (req, res) => {
         // AI class-level insight
         let aiInsight = '';
         const faculty = await Faculty.findById(req.faculty.id);
-        if (faculty.geminiApiKey) {
-            const genAI = new GoogleGenerativeAI(faculty.geminiApiKey);
-            const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
+        const apiKey = faculty?.geminiApiKey ? decrypt(faculty.geminiApiKey) : '';
+        if (apiKey) {
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
             const weakTopics = topicStats.filter(t => t.pct < 50).map(t => t.topic);
             const strongTopics = topicStats.filter(t => t.pct >= 75).map(t => t.topic);
             const prompt = `
