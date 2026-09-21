@@ -2,13 +2,18 @@ const crypto = require('crypto');
 
 const ALGORITHM = 'aes-256-cbc';
 
-// 32-byte key from env (hex string → buffer)
+// 32-byte key from env (hex string or derived via SHA-256)
 const getKey = () => {
-    const hex = process.env.ENCRYPTION_KEY;
-    if (!hex || hex.length !== 64) {
-        throw new Error('ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
+    let raw = (process.env.ENCRYPTION_KEY || '').trim().replace(/^["']|["']$/g, '');
+    if (!raw) {
+        throw new Error('ENCRYPTION_KEY environment variable is missing');
     }
-    return Buffer.from(hex, 'hex');
+    // If exact 64-char hex string, parse directly
+    if (raw.length === 64 && /^[0-9a-fA-F]{64}$/.test(raw)) {
+        return Buffer.from(raw, 'hex');
+    }
+    // Flexible fallback: derive consistent 32-byte key from whatever ENCRYPTION_KEY is provided
+    return crypto.createHash('sha256').update(raw).digest();
 };
 
 /**
