@@ -1,17 +1,20 @@
 const router = require('express').Router();
 const auth = require('../middleware/auth');
+const studentAuth = require('../middleware/studentAuth');
 const Form = require('../models/Form');
 const Response = require('../models/Response');
+const Student = require('../models/Student');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { decrypt } = require('../utils/encryption');
 
 
 // ======================================================
-// SUBMIT RESPONSE
+// SUBMIT RESPONSE — Student Login Required
 // ======================================================
 
-router.post('/submit/:link', async (req, res) => {
+router.post('/submit/:link', studentAuth, async (req, res) => {
     try {
-        const { studentName, rollNo, answers } = req.body;
+        const { answers } = req.body;
 
         // --------------------------------------------------
         // FIND FORM
@@ -20,7 +23,7 @@ router.post('/submit/:link', async (req, res) => {
         const form = await Form.findOne({
             uniqueLink: req.params.link,
             isActive: true
-        }).populate('faculty', 'geminiApiKey');
+        }).populate('faculty', 'geminiApiKey name department');
 
         if (!form) {
             return res.status(404).json({
@@ -29,19 +32,49 @@ router.post('/submit/:link', async (req, res) => {
         }
 
         // --------------------------------------------------
+        // FETCH LOGGED-IN STUDENT DETAILS
+        // --------------------------------------------------
+
+        const student = await Student.findById(req.student.id).select('name rollNo geminiApiKey');
+        if (!student) {
+            return res.status(404).json({ message: 'Student account not found' });
+        }
+
+        const studentName = student.name || 'Anonymous';
+        const rollNo = student.rollNo || '';
+
+        // --------------------------------------------------
         // GEMINI SETUP
+        // Priority: Student Key → Faculty Key → No AI
         // --------------------------------------------------
 
         let model = null;
+        let aiKeySource = 'none';
 
-        if (form.faculty?.geminiApiKey) {
-            const genAI = new GoogleGenerativeAI(
-                form.faculty.geminiApiKey
-            );
+        // Try student's key first
+        const decryptedStudentKey = student.geminiApiKey ? decrypt(student.geminiApiKey) : '';
+        if (decryptedStudentKey) {
+            try {
+                const genAI = new GoogleGenerativeAI(decryptedStudentKey);
+                model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+                aiKeySource = 'student';
+            } catch {
+                model = null;
+            }
+        }
 
-            model = genAI.getGenerativeModel({
-                model: 'gemini-3.1-flash-lite'
-            });
+        // Fall back to faculty key if student has none
+        if (!model && form.faculty?.geminiApiKey) {
+            const decryptedFacultyKey = decrypt(form.faculty.geminiApiKey);
+            if (decryptedFacultyKey) {
+                try {
+                    const genAI = new GoogleGenerativeAI(decryptedFacultyKey);
+                    model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+                    aiKeySource = 'faculty';
+                } catch {
+                    model = null;
+                }
+            }
         }
 
         // --------------------------------------------------
@@ -357,7 +390,7 @@ Use exactly this format:
                         'Not Evaluated';
 
                     baseAnswer.feedback =
-                        'AI evaluation is unavailable because the Gemini API key is not configured.';
+                        'AI evaluation is unavailable. Add your Gemini API key in your profile for personalised evaluation.';
                 }
             }
 
@@ -474,7 +507,7 @@ Use exactly this format:
         if (overallLevel === 'Good Understanding') {
 
             recommendation =
-                `Great work! You have demonstrated good overall understanding of ${form.subject}. Continue practicing and focus on strengthening the few areas where your confidence or answers were weaker.`;
+                `Great work, ${studentName}! You have demonstrated good overall understanding of ${form.subject}. Continue practicing and focus on strengthening the few areas where your confidence or answers were weaker.`;
         }
 
         else if (overallLevel === 'Average Understanding') {
@@ -491,7 +524,7 @@ Use exactly this format:
 
 
         // ======================================================
-        // SAVE RESPONSE
+        // SAVE RESPONSE (linked to student account)
         // ======================================================
 
         const response =
@@ -499,11 +532,11 @@ Use exactly this format:
 
                 form: form._id,
 
-                studentName:
-                    studentName || 'Anonymous',
+                student: req.student.id,
 
-                rollNo:
-                    rollNo || '',
+                studentName,
+
+                rollNo,
 
                 answers: scored,
 
@@ -557,7 +590,9 @@ Use exactly this format:
                 uniqueResources,
 
             responseId:
-                response._id
+                response._id,
+
+            aiKeySource
         });
 
     }
@@ -577,7 +612,60 @@ Use exactly this format:
 
 
 // ======================================================
-// GET ALL RESPONSES FOR FACULTY
+// GET STUDENT'S OWN RESPONSE HISTORY
+// ======================================================
+
+router.get('/my-responses', studentAuth, async (req, res) => {
+    try {
+        const responses = await Response.find({ student: req.student.id })
+            .sort({ submittedAt: -1 })
+            .populate({
+                path: 'form',
+                select: 'title subject',
+                populate: {
+                    path: 'faculty',
+                    select: 'name department'
+                }
+            });
+
+        res.json(responses);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+// ======================================================
+// GET SINGLE RESPONSE BY ID (student's own)
+// ======================================================
+
+router.get('/my-responses/:id', studentAuth, async (req, res) => {
+    try {
+        const response = await Response.findOne({
+            _id: req.params.id,
+            student: req.student.id
+        }).populate({
+            path: 'form',
+            select: 'title subject',
+            populate: {
+                path: 'faculty',
+                select: 'name department'
+            }
+        });
+
+        if (!response) {
+            return res.status(404).json({ message: 'Response not found' });
+        }
+
+        res.json(response);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+// ======================================================
+// GET ALL RESPONSES FOR FACULTY (faculty protected)
 // ======================================================
 
 router.get(

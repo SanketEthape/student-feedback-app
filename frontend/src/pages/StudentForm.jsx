@@ -1,27 +1,38 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import api from "../api";
+import { studentApi } from "../api";
 
 export default function StudentForm() {
   const { link } = useParams();
+  const nav = useNavigate();
 
   const [form, setForm] = useState(null);
   const [err, setErr] = useState("");
-  const [info, setInfo] = useState({
-    studentName: "",
-    rollNo: "",
-  });
+  const [studentInfo, setStudentInfo] = useState(null); // loaded from studentToken
 
   const [answers, setAnswers] = useState({});
   const [loading, setLoading] = useState(false);
 
-  // info | form | done
-  const [step, setStep] = useState("info");
+  // form | done
+  const [step, setStep] = useState("form");
 
   // Result data
   const [result, setResult] = useState(null);
 
   useEffect(() => {
+    // Require student login — redirect to login with return URL
+    const token = localStorage.getItem('studentToken');
+    if (!token) {
+      nav(`/student/login?redirect=/f/${link}`);
+      return;
+    }
+
+    // Load student profile (for display)
+    const cached = localStorage.getItem('studentInfo');
+    if (cached) setStudentInfo(JSON.parse(cached));
+
+    // Load form
     api
       .get(`/forms/link/${link}`)
       .then((r) => setForm(r.data))
@@ -50,9 +61,8 @@ export default function StudentForm() {
     setErr("");
 
     try {
-      const { data } = await api.post(`/responses/submit/${link}`, {
-        studentName: info.studentName || "Anonymous",
-        rollNo: info.rollNo,
+      // Use studentApi so Authorization: Bearer <studentToken> is sent
+      const { data } = await studentApi.post(`/responses/submit/${link}`, {
         answers: answersArr,
       });
 
@@ -63,6 +73,14 @@ export default function StudentForm() {
       setStep("done");
     } catch (error) {
       console.error(error);
+
+      if (error?.response?.status === 401) {
+        // Token expired or invalid — redirect to login
+        localStorage.removeItem('studentToken');
+        localStorage.removeItem('studentInfo');
+        nav(`/student/login?redirect=/f/${link}`);
+        return;
+      }
 
       setErr(
         error?.response?.data?.message ||
@@ -127,7 +145,7 @@ export default function StudentForm() {
               marginBottom: 4,
             }}
           >
-            Smart Student Learning & Feedback System
+            Smart Student Learning &amp; Feedback System
           </div>
 
           <h2 style={{ marginBottom: 4 }}>{form.title}</h2>
@@ -136,86 +154,25 @@ export default function StudentForm() {
             {form.faculty?.name} · {form.faculty?.department} ·{" "}
             {form.subject}
           </p>
+
+          {/* Logged-in student chip */}
+          {studentInfo && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              marginTop: 10, background: 'rgba(79,110,247,0.08)',
+              border: '1px solid rgba(79,110,247,0.2)', borderRadius: 20,
+              padding: '4px 14px', fontSize: 13
+            }}>
+              <span style={{ fontSize: 16 }}>🎓</span>
+              <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{studentInfo.name}</span>
+              {studentInfo.rollNo && <span style={{ color: 'var(--muted)' }}>· {studentInfo.rollNo}</span>}
+            </div>
+          )}
         </div>
 
-        {/* ========================== */}
-        {/* STEP 1: STUDENT INFO */}
-        {/* ========================== */}
-
-        {step === "info" && (
-          <div className="card">
-            <h3 style={{ marginBottom: 8 }}>Before you begin</h3>
-
-            <p
-              style={{
-                color: "var(--muted)",
-                fontSize: 14,
-                marginBottom: 20,
-              }}
-            >
-              Enter your details and start the learning assessment.
-            </p>
-
-            <div style={{ marginBottom: 14 }}>
-              <label
-                style={{
-                  fontSize: 13,
-                  color: "var(--muted)",
-                  display: "block",
-                  marginBottom: 6,
-                }}
-              >
-                Your Name (optional)
-              </label>
-
-              <input
-                value={info.studentName}
-                onChange={(e) =>
-                  setInfo({
-                    ...info,
-                    studentName: e.target.value,
-                  })
-                }
-                placeholder="Enter your name"
-              />
-            </div>
-
-            <div style={{ marginBottom: 24 }}>
-              <label
-                style={{
-                  fontSize: 13,
-                  color: "var(--muted)",
-                  display: "block",
-                  marginBottom: 6,
-                }}
-              >
-                Roll Number (optional)
-              </label>
-
-              <input
-                value={info.rollNo}
-                onChange={(e) =>
-                  setInfo({
-                    ...info,
-                    rollNo: e.target.value,
-                  })
-                }
-                placeholder="Enter your roll number"
-              />
-            </div>
-
-            <button
-              className="btn btn-primary"
-              style={{ width: "100%" }}
-              onClick={() => setStep("form")}
-            >
-              Start Assessment →
-            </button>
-          </div>
-        )}
 
         {/* ========================== */}
-        {/* STEP 2: QUESTIONS */}
+        {/* STEP: QUESTIONS */}
         {/* ========================== */}
 
         {step === "form" && (

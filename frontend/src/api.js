@@ -1,15 +1,19 @@
 import axios from 'axios';
 
-const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-const api = axios.create({ 
-  baseURL: `${backendUrl}/api` 
+const api = axios.create({ baseURL: BASE });
+api.interceptors.request.use(cfg => {
+  const token = localStorage.getItem('token');
+  if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  return cfg;
 });
 
-api.interceptors.request.use(config => {
-  const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
+export const studentApi = axios.create({ baseURL: BASE });
+studentApi.interceptors.request.use(cfg => {
+  const token = localStorage.getItem('studentToken');
+  if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  return cfg;
 });
 
 export default api;

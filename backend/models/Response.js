@@ -115,6 +115,13 @@ const ResponseSchema = new mongoose.Schema({
         required: true
     },
 
+    // Linked student account (null for anonymous submissions)
+    student: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Student',
+        default: null
+    },
+
     studentName: {
         type: String,
         default: 'Anonymous'
