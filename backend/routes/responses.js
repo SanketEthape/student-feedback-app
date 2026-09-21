@@ -56,7 +56,7 @@ router.post('/submit/:link', studentAuth, async (req, res) => {
         if (decryptedStudentKey) {
             try {
                 const genAI = new GoogleGenerativeAI(decryptedStudentKey);
-                model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+                model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite' });
                 aiKeySource = 'student';
             } catch {
                 model = null;
@@ -69,7 +69,7 @@ router.post('/submit/:link', studentAuth, async (req, res) => {
             if (decryptedFacultyKey) {
                 try {
                     const genAI = new GoogleGenerativeAI(decryptedFacultyKey);
-                    model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+                    model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite' });
                     aiKeySource = 'faculty';
                 } catch {
                     model = null;
