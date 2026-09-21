@@ -75,14 +75,14 @@ app.use('/api/analytics', require('./routes/analytics'));
 // Database Connection & Server Startup
 const PORT = process.env.PORT || 5000;
 
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT} (bound to 0.0.0.0)`);
+});
+
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
-    console.log('MongoDB connected');
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on port ${PORT} (bound to 0.0.0.0)`);
-    });
+    console.log('MongoDB connected successfully');
   })
   .catch((err) => {
     console.error('MongoDB connection error:', err);
-    process.exit(1);
   });
