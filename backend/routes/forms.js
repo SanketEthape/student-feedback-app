@@ -41,7 +41,7 @@ router.post('/generate', auth, async (req, res) => {
         const genAI = new GoogleGenerativeAI(apiKey);
 
         const model = genAI.getGenerativeModel({
-            model: 'gemini-1.5-flash'
+            model: 'gemini-2.0-flash'
         });
 
         // ==================================================
@@ -628,7 +628,7 @@ router.patch('/:id/questions/:qIndex/regenerate', auth, async (req, res) => {
 
         const currentQ = form.questions[idx];
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
         const prompt = `You are an educational assessment expert.
 The syllabus for this form is:
