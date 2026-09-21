@@ -59,8 +59,8 @@ app.use(cors({
 
 app.use(express.json());
 
-// Root Health Check Route (avoids "Cannot GET /" in browser)
-app.get('/', (req, res) => {
+// Health Check Routes (handles Render health checks on /, /health, /healthz, /api)
+app.get(['/', '/health', '/healthz', '/api'], (req, res) => {
   res.status(200).json({ status: 'success', message: 'Student Feedback API is running' });
 });
 
