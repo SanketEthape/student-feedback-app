@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const auth = require('../middleware/auth');
 const studentAuth = require('../middleware/studentAuth');
+const optionalStudentAuth = require('../middleware/optionalStudentAuth');
 const Form = require('../models/Form');
 const Response = require('../models/Response');
 const Student = require('../models/Student');
@@ -9,12 +10,12 @@ const { decrypt } = require('../utils/encryption');
 
 
 // ======================================================
-// SUBMIT RESPONSE — Student Login Required
+// SUBMIT RESPONSE — Student Login Optional
 // ======================================================
 
-router.post('/submit/:link', studentAuth, async (req, res) => {
+router.post('/submit/:link', optionalStudentAuth, async (req, res) => {
     try {
-        const { answers } = req.body;
+        const { answers, studentName: bodyName, rollNo: bodyRollNo } = req.body;
 
         // --------------------------------------------------
         // FIND FORM
@@ -32,16 +33,20 @@ router.post('/submit/:link', studentAuth, async (req, res) => {
         }
 
         // --------------------------------------------------
-        // FETCH LOGGED-IN STUDENT DETAILS
+        // FETCH STUDENT DETAILS (IF LOGGED IN)
         // --------------------------------------------------
 
-        const student = await Student.findById(req.student.id).select('name rollNo geminiApiKey');
-        if (!student) {
-            return res.status(404).json({ message: 'Student account not found' });
-        }
+        let student = null;
+        let studentName = bodyName ? bodyName.trim() : 'Anonymous';
+        let rollNo = bodyRollNo ? bodyRollNo.trim() : '';
 
-        const studentName = student.name || 'Anonymous';
-        const rollNo = student.rollNo || '';
+        if (req.student && req.student.id) {
+            student = await Student.findById(req.student.id).select('name rollNo geminiApiKey');
+            if (student) {
+                studentName = student.name || studentName || 'Anonymous';
+                rollNo = student.rollNo || rollNo || '';
+            }
+        }
 
         // --------------------------------------------------
         // GEMINI SETUP
@@ -52,14 +57,16 @@ router.post('/submit/:link', studentAuth, async (req, res) => {
         let aiKeySource = 'none';
 
         // Try student's key first
-        const decryptedStudentKey = student.geminiApiKey ? decrypt(student.geminiApiKey) : '';
-        if (decryptedStudentKey) {
-            try {
-                const genAI = new GoogleGenerativeAI(decryptedStudentKey);
-                model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite' });
-                aiKeySource = 'student';
-            } catch {
-                model = null;
+        if (student && student.geminiApiKey) {
+            const decryptedStudentKey = decrypt(student.geminiApiKey);
+            if (decryptedStudentKey) {
+                try {
+                    const genAI = new GoogleGenerativeAI(decryptedStudentKey);
+                    model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite' });
+                    aiKeySource = 'student';
+                } catch {
+                    model = null;
+                }
             }
         }
 
@@ -532,7 +539,7 @@ Use exactly this format:
 
                 form: form._id,
 
-                student: req.student.id,
+                student: student ? student._id : null,
 
                 studentName,
 

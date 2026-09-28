@@ -9,7 +9,10 @@ export default function StudentForm() {
 
   const [form, setForm] = useState(null);
   const [err, setErr] = useState("");
-  const [studentInfo, setStudentInfo] = useState(null); // loaded from studentToken
+  const [studentInfo, setStudentInfo] = useState(null); // loaded from studentToken if present
+
+  const [guestName, setGuestName] = useState("");
+  const [guestRollNo, setGuestRollNo] = useState("");
 
   const [answers, setAnswers] = useState({});
   const [loading, setLoading] = useState(false);
@@ -21,18 +24,15 @@ export default function StudentForm() {
   const [result, setResult] = useState(null);
 
   useEffect(() => {
-    // Require student login — redirect to login with return URL
-    const token = localStorage.getItem('studentToken');
-    if (!token) {
-      nav(`/student/login?redirect=/f/${link}`);
-      return;
+    // Check if student profile is in cache (optional login)
+    const cached = localStorage.getItem('studentInfo');
+    if (cached) {
+      try {
+        setStudentInfo(JSON.parse(cached));
+      } catch (e) {}
     }
 
-    // Load student profile (for display)
-    const cached = localStorage.getItem('studentInfo');
-    if (cached) setStudentInfo(JSON.parse(cached));
-
-    // Load form
+    // Load form directly without requiring login
     api
       .get(`/forms/link/${link}`)
       .then((r) => setForm(r.data))
@@ -61,10 +61,14 @@ export default function StudentForm() {
     setErr("");
 
     try {
-      // Use studentApi so Authorization: Bearer <studentToken> is sent
-      const { data } = await studentApi.post(`/responses/submit/${link}`, {
+      const payload = {
         answers: answersArr,
-      });
+        studentName: studentInfo?.name || guestName,
+        rollNo: studentInfo?.rollNo || guestRollNo,
+      };
+
+      // Use studentApi so Authorization: Bearer <studentToken> is attached if available
+      const { data } = await studentApi.post(`/responses/submit/${link}`, payload);
 
       // Save complete result from backend
       setResult(data);
@@ -73,15 +77,6 @@ export default function StudentForm() {
       setStep("done");
     } catch (error) {
       console.error(error);
-
-      if (error?.response?.status === 401) {
-        // Token expired or invalid — redirect to login
-        localStorage.removeItem('studentToken');
-        localStorage.removeItem('studentInfo');
-        nav(`/student/login?redirect=/f/${link}`);
-        return;
-      }
-
       setErr(
         error?.response?.data?.message ||
         "Submission failed. Please try again."
@@ -156,7 +151,7 @@ export default function StudentForm() {
           </p>
 
           {/* Logged-in student chip */}
-          {studentInfo && (
+          {studentInfo ? (
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
               marginTop: 10, background: 'rgba(79,110,247,0.08)',
@@ -166,6 +161,59 @@ export default function StudentForm() {
               <span style={{ fontSize: 16 }}>🎓</span>
               <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{studentInfo.name}</span>
               {studentInfo.rollNo && <span style={{ color: 'var(--muted)' }}>· {studentInfo.rollNo}</span>}
+            </div>
+          ) : (
+            <div style={{
+              background: '#ffffff',
+              border: '1px solid var(--border, #e5e7eb)',
+              borderRadius: 12,
+              padding: '16px 20px',
+              marginTop: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
+                  👤 Participant Information <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: 13 }}>(Optional)</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => nav(`/student/login?redirect=/f/${link}`)}
+                  className="btn btn-secondary"
+                  style={{ fontSize: 12, padding: '5px 12px' }}
+                >
+                  🎓 Log in to save to your history
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                    Your Name (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    placeholder="e.g. John Doe (or leave blank)"
+                    style={{ fontSize: 14, padding: '8px 12px' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                    Roll No / Student ID (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={guestRollNo}
+                    onChange={(e) => setGuestRollNo(e.target.value)}
+                    placeholder="e.g. 21CS001"
+                    style={{ fontSize: 14, padding: '8px 12px' }}
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>
