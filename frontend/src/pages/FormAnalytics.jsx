@@ -86,13 +86,17 @@ export default function FormAnalytics() {
     // Start manual editing of a question
     const startManualEdit = (idx) => {
         const q = form.questions[idx];
+        let opts = Array.isArray(q.options) && q.options.length > 0 ? [...q.options] : ['', '', '', ''];
+        if ((q.type || 'mcq') === 'mcq' && opts.length < 4) {
+            while (opts.length < 4) opts.push('');
+        }
         setEditingIdx(idx);
         setEditFormData({
             question: q.question || '',
             topic: q.topic || '',
             type: q.type || 'mcq',
-            options: q.options ? [...q.options] : ['', '', '', ''],
-            correctOption: q.correctOption || '',
+            options: opts,
+            correctOption: q.correctOption || opts[0] || '',
             explanation: q.explanation || '',
             expectedAnswer: q.expectedAnswer || '',
             isApproved: q.isApproved || false
@@ -104,14 +108,66 @@ export default function FormAnalytics() {
         setEditFormData(null);
     };
 
+    const handleOptionTextChange = (optIdx, val) => {
+        if (!editFormData) return;
+        const newOpts = [...editFormData.options];
+        const oldVal = newOpts[optIdx];
+        newOpts[optIdx] = val;
+        const newCorrect = editFormData.correctOption === oldVal ? val : editFormData.correctOption;
+        setEditFormData({ ...editFormData, options: newOpts, correctOption: newCorrect });
+    };
+
+    const handleAddOption = () => {
+        if (!editFormData) return;
+        setEditFormData({
+            ...editFormData,
+            options: [...editFormData.options, '']
+        });
+    };
+
+    const handleRemoveOption = (optIdx) => {
+        if (!editFormData || editFormData.options.length <= 2) return;
+        const removedVal = editFormData.options[optIdx];
+        const newOpts = editFormData.options.filter((_, i) => i !== optIdx);
+        const newCorrect = editFormData.correctOption === removedVal ? (newOpts[0] || '') : editFormData.correctOption;
+        setEditFormData({
+            ...editFormData,
+            options: newOpts,
+            correctOption: newCorrect
+        });
+    };
+
+    const handleTypeSwitch = (newType) => {
+        if (!editFormData) return;
+        let opts = [...(editFormData.options || [])];
+        if (newType === 'mcq' && opts.length < 4) {
+            while (opts.length < 4) opts.push('');
+        }
+        setEditFormData({
+            ...editFormData,
+            type: newType,
+            options: newType === 'mcq' ? opts : (newType === 'scale' ? ['1', '2', '3', '4', '5'] : []),
+            correctOption: newType === 'mcq' ? (editFormData.correctOption || opts[0] || '') : ''
+        });
+    };
+
     const saveManualEdit = async (idx) => {
         if (!editFormData.question.trim()) {
             alert('Question text cannot be empty');
             return;
         }
-        if (editFormData.type === 'mcq' && !editFormData.correctOption) {
-            alert('Please select or specify the correct option for this MCQ');
-            return;
+        if (editFormData.type === 'mcq') {
+            const cleanedOptions = editFormData.options.map(o => o.trim()).filter(Boolean);
+            if (cleanedOptions.length < 2) {
+                alert('MCQ must have at least 2 non-empty options');
+                return;
+            }
+            if (!editFormData.correctOption || !cleanedOptions.includes(editFormData.correctOption.trim())) {
+                alert('Please select or specify a valid correct option among the provided options');
+                return;
+            }
+            editFormData.options = cleanedOptions;
+            editFormData.correctOption = editFormData.correctOption.trim();
         }
 
         setSavingEdit(true);
@@ -644,90 +700,231 @@ export default function FormAnalytics() {
 
                             {/* INLINE MANUAL EDIT MODE */}
                             {editingIdx === i ? (
-                                <div style={{ background: '#f8fafc', border: '1px solid var(--accent)', borderRadius: 8, padding: 16, marginTop: 10 }}>
-                                    <h4 style={{ margin: '0 0 12px', fontSize: 14, color: 'var(--accent)' }}>✏️ Edit Question #{i + 1}</h4>
+                                <div style={{ background: '#f8fafc', border: '2px solid var(--accent)', borderRadius: 10, padding: 18, marginTop: 10, boxShadow: '0 4px 14px rgba(79, 110, 247, 0.08)' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+                                        <h4 style={{ margin: 0, fontSize: 15, color: 'var(--accent)' }}>✏️ Manually Reframe Question #{i + 1}</h4>
+
+                                        {/* Question Type Switcher */}
+                                        <div style={{ display: 'flex', gap: 4, background: '#e2e8f0', padding: 3, borderRadius: 8 }}>
+                                            {[
+                                                { id: 'mcq', label: '🔘 MCQ' },
+                                                { id: 'text', label: '✍️ Descriptive' },
+                                                { id: 'scale', label: '📊 Scale' }
+                                            ].map(t => (
+                                                <button
+                                                    key={t.id}
+                                                    type="button"
+                                                    onClick={() => handleTypeSwitch(t.id)}
+                                                    style={{
+                                                        padding: '4px 10px', fontSize: 12, fontWeight: 600,
+                                                        borderRadius: 6, border: 'none', cursor: 'pointer',
+                                                        background: editFormData.type === t.id ? '#fff' : 'transparent',
+                                                        color: editFormData.type === t.id ? 'var(--accent)' : 'var(--muted)',
+                                                        boxShadow: editFormData.type === t.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                                                    }}
+                                                >
+                                                    {t.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
 
                                     {/* Topic */}
                                     <div style={{ marginBottom: 12 }}>
-                                        <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Topic</label>
+                                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 4 }}>Syllabus Topic</label>
                                         <input
                                             value={editFormData.topic}
                                             onChange={e => setEditFormData({ ...editFormData, topic: e.target.value })}
-                                            placeholder="Topic name"
-                                            style={{ width: '100%', padding: '8px', fontSize: 13 }}
+                                            placeholder="Topic name (e.g. Binary Search Trees)"
+                                            style={{ width: '100%', padding: '9px 12px', fontSize: 13, background: '#fff' }}
                                         />
                                     </div>
 
                                     {/* Question Text */}
-                                    <div style={{ marginBottom: 12 }}>
-                                        <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Question</label>
+                                    <div style={{ marginBottom: 14 }}>
+                                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 4 }}>Question Prompt</label>
                                         <textarea
                                             value={editFormData.question}
                                             onChange={e => setEditFormData({ ...editFormData, question: e.target.value })}
                                             rows={3}
-                                            style={{ width: '100%', padding: '8px', fontSize: 13, resize: 'vertical' }}
+                                            placeholder="Type the question text here..."
+                                            style={{ width: '100%', padding: '9px 12px', fontSize: 13, resize: 'vertical', background: '#fff' }}
                                         />
                                     </div>
 
-                                    {/* MCQ Options */}
+                                    {/* MCQ Options Editor */}
                                     {editFormData.type === 'mcq' && (
-                                        <div style={{ marginBottom: 12 }}>
-                                            <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
-                                                MCQ Options (Select the radio button for the correct option)
-                                            </label>
-                                            <div style={{ display: 'grid', gap: 8 }}>
-                                                {editFormData.options.map((opt, optIdx) => (
-                                                    <div key={optIdx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                        <input
-                                                            type="radio"
-                                                            name={`correctOpt-${i}`}
-                                                            checked={editFormData.correctOption === opt && opt !== ''}
-                                                            onChange={() => setEditFormData({ ...editFormData, correctOption: opt })}
-                                                            title="Mark as correct answer"
-                                                        />
-                                                        <input
-                                                            value={opt}
-                                                            onChange={e => {
-                                                                const newOpts = [...editFormData.options];
-                                                                const oldVal = newOpts[optIdx];
-                                                                newOpts[optIdx] = e.target.value;
-                                                                const newCorrect = editFormData.correctOption === oldVal ? e.target.value : editFormData.correctOption;
-                                                                setEditFormData({ ...editFormData, options: newOpts, correctOption: newCorrect });
-                                                            }}
-                                                            placeholder={`Option ${optIdx + 1}`}
-                                                            style={{ flex: 1, padding: '7px 10px', fontSize: 13 }}
-                                                        />
-                                                    </div>
-                                                ))}
+                                        <div style={{
+                                            marginBottom: 16,
+                                            background: '#ffffff',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: 8,
+                                            padding: '14px 16px'
+                                        }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                                <div>
+                                                    <strong style={{ fontSize: 13, color: 'var(--text)', display: 'block' }}>
+                                                        Set Multiple Choice Options & Select Correct Answer
+                                                    </strong>
+                                                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                                                        Type each option below. Click the radio button next to an option to mark it as the correct answer.
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddOption}
+                                                    style={{
+                                                        fontSize: 12, padding: '4px 10px', borderRadius: 6,
+                                                        background: 'rgba(79,110,247,0.1)', color: 'var(--accent)',
+                                                        border: '1px solid rgba(79,110,247,0.2)', cursor: 'pointer', fontWeight: 600
+                                                    }}
+                                                >
+                                                    + Add Option
+                                                </button>
                                             </div>
+
+                                            <div style={{ display: 'grid', gap: 10 }}>
+                                                {editFormData.options.map((opt, optIdx) => {
+                                                    const isCorrect = editFormData.correctOption === opt && opt !== '';
+                                                    const letter = String.fromCharCode(65 + optIdx);
+                                                    return (
+                                                        <div
+                                                            key={optIdx}
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: 10,
+                                                                padding: '8px 12px',
+                                                                borderRadius: 8,
+                                                                border: isCorrect ? '2px solid #10b981' : '1px solid var(--border)',
+                                                                background: isCorrect ? 'rgba(16,185,129,0.04)' : '#fafbfc'
+                                                            }}
+                                                        >
+                                                            {/* Option Letter Badge */}
+                                                            <span style={{
+                                                                width: 24, height: 24, borderRadius: '50%',
+                                                                background: isCorrect ? '#10b981' : 'var(--border)',
+                                                                color: isCorrect ? '#fff' : 'var(--text)',
+                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                fontSize: 11, fontWeight: 700, flexShrink: 0
+                                                            }}>
+                                                                {letter}
+                                                            </span>
+
+                                                            {/* Option Text Input */}
+                                                            <input
+                                                                type="text"
+                                                                value={opt}
+                                                                onChange={e => handleOptionTextChange(optIdx, e.target.value)}
+                                                                placeholder={`Enter text for Option ${letter}...`}
+                                                                style={{
+                                                                    flex: 1,
+                                                                    padding: '8px 12px',
+                                                                    fontSize: 13,
+                                                                    background: '#fff',
+                                                                    border: '1px solid var(--border)',
+                                                                    borderRadius: 6
+                                                                }}
+                                                            />
+
+                                                            {/* Radio Button for Correct Answer */}
+                                                            <label
+                                                                style={{
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: 6,
+                                                                    cursor: 'pointer',
+                                                                    fontSize: 12,
+                                                                    fontWeight: isCorrect ? 700 : 500,
+                                                                    color: isCorrect ? '#059669' : 'var(--muted)',
+                                                                    background: isCorrect ? 'rgba(16,185,129,0.1)' : 'transparent',
+                                                                    padding: '4px 8px',
+                                                                    borderRadius: 6,
+                                                                    flexShrink: 0,
+                                                                    userSelect: 'none'
+                                                                }}
+                                                            >
+                                                                <input
+                                                                    type="radio"
+                                                                    name={`correctOpt-${i}`}
+                                                                    checked={isCorrect}
+                                                                    onChange={() => setEditFormData({ ...editFormData, correctOption: opt })}
+                                                                    style={{
+                                                                        width: 16,
+                                                                        height: 16,
+                                                                        minWidth: 16,
+                                                                        cursor: 'pointer',
+                                                                        accentColor: '#10b981',
+                                                                        margin: 0
+                                                                    }}
+                                                                />
+                                                                {isCorrect ? '✓ Correct Answer' : 'Mark Correct'}
+                                                            </label>
+
+                                                            {/* Delete Option Button */}
+                                                            {editFormData.options.length > 2 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleRemoveOption(optIdx)}
+                                                                    title="Delete option"
+                                                                    style={{
+                                                                        background: 'none',
+                                                                        border: 'none',
+                                                                        color: '#ef4444',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: 14,
+                                                                        padding: '4px',
+                                                                        flexShrink: 0
+                                                                    }}
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            {/* Correct Option Status Banner */}
+                                            {editFormData.correctOption ? (
+                                                <div style={{ marginTop: 10, fontSize: 12, color: '#059669', fontWeight: 600 }}>
+                                                    ✅ Selected correct answer: "{editFormData.correctOption}"
+                                                </div>
+                                            ) : (
+                                                <div style={{ marginTop: 10, fontSize: 12, color: '#b45309', fontWeight: 600 }}>
+                                                    ⚠️ Please select one of the options above as the correct answer.
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 
                                     {/* Descriptive Expected Answer */}
                                     {editFormData.type === 'text' && (
                                         <div style={{ marginBottom: 12 }}>
-                                            <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
-                                                Expected Answer / Important Concepts to Check
+                                            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 4 }}>
+                                                Expected Answer / Key Concepts for Evaluation
                                             </label>
                                             <textarea
                                                 value={editFormData.expectedAnswer}
                                                 onChange={e => setEditFormData({ ...editFormData, expectedAnswer: e.target.value })}
                                                 rows={3}
-                                                style={{ width: '100%', padding: '8px', fontSize: 13, resize: 'vertical' }}
+                                                placeholder="Key definitions, principles, or formulas students should include in their response..."
+                                                style={{ width: '100%', padding: '9px 12px', fontSize: 13, resize: 'vertical', background: '#fff' }}
                                             />
                                         </div>
                                     )}
 
                                     {/* Explanation */}
                                     <div style={{ marginBottom: 16 }}>
-                                        <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
-                                            Explanation / Model Solution
+                                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 4 }}>
+                                            Explanation / Model Solution (Displayed to students after submission)
                                         </label>
                                         <textarea
                                             value={editFormData.explanation}
                                             onChange={e => setEditFormData({ ...editFormData, explanation: e.target.value })}
                                             rows={2}
-                                            style={{ width: '100%', padding: '8px', fontSize: 13, resize: 'vertical' }}
+                                            placeholder="Student-friendly explanation..."
+                                            style={{ width: '100%', padding: '9px 12px', fontSize: 13, resize: 'vertical', background: '#fff' }}
                                         />
                                     </div>
 

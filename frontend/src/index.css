@@ -108,7 +108,7 @@ h3 {
   transform: none !important;
 }
 
-input,
+input:not([type="radio"]):not([type="checkbox"]),
 textarea,
 select {
   width: 100%;
@@ -120,6 +120,12 @@ select {
   font-family: 'DM Sans', sans-serif;
   font-size: 14px;
   transition: border 0.2s, box-shadow 0.2s;
+}
+
+input[type="radio"],
+input[type="checkbox"] {
+  width: auto;
+  cursor: pointer;
 }
 
 input:focus,
