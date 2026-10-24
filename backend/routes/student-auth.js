@@ -111,6 +111,77 @@ router.get('/me', studentAuth, async (req, res) => {
 
 
 // ======================================================
+// UPDATE PROFILE (protected)
+// ======================================================
+router.put('/profile', studentAuth, async (req, res) => {
+    try {
+        const { name, rollNo, studentClass, division, currentPassword, newPassword } = req.body;
+        const student = await Student.findById(req.student.id);
+        if (!student) return res.status(404).json({ message: 'Student not found' });
+
+        if (name !== undefined) {
+            const trimmedName = String(name).trim();
+            if (!trimmedName) return res.status(400).json({ message: 'Name cannot be empty' });
+            student.name = trimmedName;
+        }
+
+        if (rollNo !== undefined) {
+            const trimmedRoll = String(rollNo).trim();
+            if (!trimmedRoll) return res.status(400).json({ message: 'Roll number cannot be empty' });
+            student.rollNo = trimmedRoll;
+        }
+
+        if (studentClass !== undefined) {
+            const validClasses = ['FY', 'SY', 'TY', 'Final Year'];
+            const trimmedClass = String(studentClass).trim();
+            if (!validClasses.includes(trimmedClass)) {
+                return res.status(400).json({ message: `Class must be one of: ${validClasses.join(', ')}` });
+            }
+            student.studentClass = trimmedClass;
+        }
+
+        if (division !== undefined) {
+            const trimmedDiv = String(division).trim().toUpperCase();
+            if (!trimmedDiv) return res.status(400).json({ message: 'Division cannot be empty' });
+            student.division = trimmedDiv;
+        }
+
+        if (newPassword) {
+            if (!currentPassword) {
+                return res.status(400).json({ message: 'Current password is required to change password' });
+            }
+            const isMatch = await student.comparePassword(currentPassword);
+            if (!isMatch) {
+                return res.status(400).json({ message: 'Current password is incorrect' });
+            }
+            if (newPassword.length < 6) {
+                return res.status(400).json({ message: 'New password must be at least 6 characters' });
+            }
+            student.password = newPassword;
+        }
+
+        await student.save();
+
+        res.json({
+            message: 'Profile updated successfully',
+            student: {
+                id: student._id,
+                name: student.name,
+                email: student.email,
+                rollNo: student.rollNo,
+                studentClass: student.studentClass,
+                division: student.division,
+                hasApiKey: !!student.geminiApiKey,
+                createdAt: student.createdAt
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+// ======================================================
 // GET ALL DISTINCT CLASSES & DIVISIONS (Public/Faculty)
 // ======================================================
 router.get('/classes-divisions', async (req, res) => {

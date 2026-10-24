@@ -241,6 +241,19 @@ export default function StudentDashboard() {
   const [activeTab, setTab] = useState('assigned'); // 'assigned' | 'history' | 'profile'
   const [selectedResponse, setSelectedResponse] = useState(null);
 
+  // Profile Edit form state
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileFormData, setProfileFormData] = useState({
+    name: '',
+    rollNo: '',
+    studentClass: 'FY',
+    division: 'A',
+    currentPassword: '',
+    newPassword: ''
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMsg, setProfileMsg] = useState('');
+
   // API Key form
   const [apiKey, setApiKey] = useState('');
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
@@ -277,6 +290,68 @@ export default function StudentDashboard() {
       setNotifications(prev => prev.map(n => n._id === notifId ? { ...n, isRead: true } : n));
     } catch (e) {
       console.error('Failed to mark notification read:', e);
+    }
+  };
+
+  const startEditingProfile = () => {
+    setProfileFormData({
+      name: profile?.name || '',
+      rollNo: profile?.rollNo || '',
+      studentClass: profile?.studentClass || 'FY',
+      division: profile?.division || 'A',
+      currentPassword: '',
+      newPassword: ''
+    });
+    setProfileMsg('');
+    setEditingProfile(true);
+  };
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    if (!profileFormData.name.trim()) {
+      setProfileMsg('❌ Name cannot be empty');
+      return;
+    }
+    if (!profileFormData.rollNo.trim()) {
+      setProfileMsg('❌ Roll number cannot be empty');
+      return;
+    }
+    if (!profileFormData.division.trim()) {
+      setProfileMsg('❌ Division cannot be empty');
+      return;
+    }
+    if (profileFormData.newPassword && !profileFormData.currentPassword) {
+      setProfileMsg('❌ Current password is required to change password');
+      return;
+    }
+
+    setProfileSaving(true);
+    setProfileMsg('');
+    try {
+      const payload = {
+        name: profileFormData.name.trim(),
+        rollNo: profileFormData.rollNo.trim(),
+        studentClass: profileFormData.studentClass,
+        division: profileFormData.division.trim().toUpperCase()
+      };
+      if (profileFormData.newPassword) {
+        payload.currentPassword = profileFormData.currentPassword;
+        payload.newPassword = profileFormData.newPassword;
+      }
+
+      const { data } = await studentApi.put('/student-auth/profile', payload);
+      setProfile(data.student);
+      setEditingProfile(false);
+      setProfileMsg('✅ Profile updated successfully!');
+      setTimeout(() => setProfileMsg(''), 4000);
+
+      // Refresh notifications in case class or division targeting changed
+      const notifRes = await studentApi.get('/notifications/my').catch(() => ({ data: [] }));
+      setNotifications(notifRes.data || []);
+    } catch (err) {
+      setProfileMsg('❌ ' + (err?.response?.data?.message || 'Failed to update profile'));
+    } finally {
+      setProfileSaving(false);
     }
   };
 
@@ -677,22 +752,195 @@ export default function StudentDashboard() {
           <div style={{ display: 'grid', gap: 20 }}>
             {/* Profile Info */}
             <div className="card">
-              <h3 style={{ marginBottom: 16 }}>👤 Profile Information</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-                {[
-                  { label: 'Name', value: profile?.name },
-                  { label: 'Email', value: profile?.email },
-                  { label: 'Class', value: profile?.studentClass || '—' },
-                  { label: 'Division', value: profile?.division || '—' },
-                  { label: 'Roll Number', value: profile?.rollNo || '—' },
-                  { label: 'Member Since', value: new Date(profile?.createdAt).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) }
-                ].map((f, i) => (
-                  <div key={i} style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 16px', border: '1px solid var(--border)' }}>
-                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{f.label}</div>
-                    <div style={{ fontWeight: 600, fontSize: 15 }}>{f.value}</div>
-                  </div>
-                ))}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+                <h3 style={{ margin: 0 }}>👤 Profile Information</h3>
+                {!editingProfile ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={startEditingProfile}
+                    style={{ fontSize: 13, padding: '6px 14px' }}
+                  >
+                    ✏️ Edit Profile
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => { setEditingProfile(false); setProfileMsg(''); }}
+                    style={{ fontSize: 13, padding: '6px 14px' }}
+                  >
+                    ✕ Cancel
+                  </button>
+                )}
               </div>
+
+              {profileMsg && (
+                <div style={{
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  marginBottom: 16,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  background: profileMsg.startsWith('✅') ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+                  color: profileMsg.startsWith('✅') ? '#22c55e' : '#ef4444',
+                  border: `1px solid ${profileMsg.startsWith('✅') ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`
+                }}>
+                  {profileMsg}
+                </div>
+              )}
+
+              {!editingProfile ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+                  {[
+                    { label: 'Name', value: profile?.name },
+                    { label: 'Email', value: profile?.email },
+                    { label: 'Class', value: profile?.studentClass || '—' },
+                    { label: 'Division', value: profile?.division || '—' },
+                    { label: 'Roll Number', value: profile?.rollNo || '—' },
+                    { label: 'Member Since', value: new Date(profile?.createdAt).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) }
+                  ].map((f, i) => (
+                    <div key={i} style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 16px', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{f.label}</div>
+                      <div style={{ fontWeight: 600, fontSize: 15 }}>{f.value}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <form onSubmit={handleUpdateProfile} style={{ display: 'grid', gap: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                        Full Name *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={profileFormData.name}
+                        onChange={e => setProfileFormData({ ...profileFormData, name: e.target.value })}
+                        style={{ width: '100%', padding: '9px 12px', fontSize: 14 }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                        Roll Number *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={profileFormData.rollNo}
+                        onChange={e => setProfileFormData({ ...profileFormData, rollNo: e.target.value })}
+                        placeholder="e.g. 21CS001"
+                        style={{ width: '100%', padding: '9px 12px', fontSize: 14 }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                        Class *
+                      </label>
+                      <select
+                        value={profileFormData.studentClass}
+                        onChange={e => setProfileFormData({ ...profileFormData, studentClass: e.target.value })}
+                        style={{ width: '100%', padding: '9px 12px', fontSize: 14, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}
+                      >
+                        <option value="FY">FY (First Year)</option>
+                        <option value="SY">SY (Second Year)</option>
+                        <option value="TY">TY (Third Year)</option>
+                        <option value="Final Year">Final Year</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                        Division *
+                      </label>
+                      <select
+                        value={profileFormData.division}
+                        onChange={e => setProfileFormData({ ...profileFormData, division: e.target.value })}
+                        style={{ width: '100%', padding: '9px 12px', fontSize: 14, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}
+                      >
+                        {['A', 'B', 'C', 'D', 'E'].map(d => (
+                          <option key={d} value={d}>Division {d}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                        Registered Email
+                      </label>
+                      <input
+                        type="text"
+                        disabled
+                        value={profile?.email || ''}
+                        style={{ width: '100%', padding: '9px 12px', fontSize: 14, opacity: 0.65, cursor: 'not-allowed' }}
+                      />
+                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>Email is verified and cannot be changed</span>
+                    </div>
+                  </div>
+
+                  {/* Change Password Sub-section */}
+                  <div style={{
+                    marginTop: 8,
+                    padding: '16px',
+                    borderRadius: 10,
+                    background: 'var(--bg)',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <h4 style={{ margin: '0 0 10px 0', fontSize: 13, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      🔒 Change Password (Optional)
+                    </h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                      <div>
+                        <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                          Current Password
+                        </label>
+                        <input
+                          type="password"
+                          value={profileFormData.currentPassword}
+                          onChange={e => setProfileFormData({ ...profileFormData, currentPassword: e.target.value })}
+                          placeholder="Required only to set new password"
+                          style={{ width: '100%', padding: '8px 12px', fontSize: 13 }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                          New Password
+                        </label>
+                        <input
+                          type="password"
+                          value={profileFormData.newPassword}
+                          onChange={e => setProfileFormData({ ...profileFormData, newPassword: e.target.value })}
+                          placeholder="Min 6 characters"
+                          style={{ width: '100%', padding: '8px 12px', fontSize: 13 }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => { setEditingProfile(false); setProfileMsg(''); }}
+                      disabled={profileSaving}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={profileSaving}
+                      style={{ minWidth: 140 }}
+                    >
+                      {profileSaving ? 'Saving...' : '💾 Save Changes'}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
 
             {/* Gemini API Key */}
