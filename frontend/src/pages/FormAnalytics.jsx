@@ -1126,26 +1126,33 @@ export default function FormAnalytics() {
             {showPublishModal && (
                 <div style={{
                     position: 'fixed', inset: 0, zIndex: 1000,
-                    background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+                    background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(6px)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     padding: '20px 16px'
                 }} onClick={() => !publishing && setShowPublishModal(false)}>
                     <div style={{
-                        background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 580,
-                        maxHeight: '92vh', overflowY: 'auto', padding: 28,
-                        boxShadow: '0 20px 60px rgba(0,0,0,0.4)', border: '1px solid var(--border)'
+                        background: '#ffffff',
+                        color: '#1e2235',
+                        borderRadius: 16,
+                        width: '100%',
+                        maxWidth: 580,
+                        maxHeight: '92vh',
+                        overflowY: 'auto',
+                        padding: 28,
+                        boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.08)',
+                        border: '1px solid #dde1ec'
                     }} onClick={e => e.stopPropagation()}>
                         {/* Modal Header */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
                             <div>
-                                <h3 style={{ fontSize: 20, marginBottom: 4 }}>📢 Publish Assessment</h3>
-                                <p style={{ color: 'var(--muted)', fontSize: 13 }}>
+                                <h3 style={{ fontSize: 20, marginBottom: 4, color: '#1e2235' }}>📢 Publish Assessment</h3>
+                                <p style={{ color: '#6b7280', fontSize: 13 }}>
                                     Select target classes and student policies. Notifications will be sent automatically.
                                 </p>
                             </div>
                             <button
                                 onClick={() => !publishing && setShowPublishModal(false)}
-                                style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--muted)' }}
+                                style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#6b7280' }}
                             >
                                 ✕
                             </button>
@@ -1179,9 +1186,9 @@ export default function FormAnalytics() {
                                                 fontSize: 13,
                                                 fontWeight: 600,
                                                 cursor: 'pointer',
-                                                border: `1.5px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
-                                                background: selected ? 'rgba(79,110,247,0.12)' : 'var(--bg)',
-                                                color: selected ? 'var(--accent)' : 'var(--text)',
+                                                border: `1.5px solid ${selected ? 'var(--accent)' : '#dde1ec'}`,
+                                                background: selected ? 'rgba(79,110,247,0.12)' : '#f8fafc',
+                                                color: selected ? 'var(--accent)' : '#1e2235',
                                                 transition: 'all 0.15s'
                                             }}
                                         >
@@ -1220,9 +1227,9 @@ export default function FormAnalytics() {
                                                 fontSize: 13,
                                                 fontWeight: 600,
                                                 cursor: 'pointer',
-                                                border: `1.5px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
-                                                background: selected ? 'rgba(79,110,247,0.12)' : 'var(--bg)',
-                                                color: selected ? 'var(--accent)' : 'var(--text)',
+                                                border: `1.5px solid ${selected ? 'var(--accent)' : '#dde1ec'}`,
+                                                background: selected ? 'rgba(79,110,247,0.12)' : '#f8fafc',
+                                                color: selected ? 'var(--accent)' : '#1e2235',
                                                 transition: 'all 0.15s'
                                             }}
                                         >
@@ -1235,11 +1242,11 @@ export default function FormAnalytics() {
 
                         {/* Anonymous Submissions Policy */}
                         <div style={{
-                            background: 'var(--bg)',
+                            background: '#f8fafc',
                             borderRadius: 10,
                             padding: '14px 16px',
                             marginBottom: 20,
-                            border: '1px solid var(--border)'
+                            border: '1px solid #dde1ec'
                         }}>
                             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer' }}>
                                 <input
@@ -1249,8 +1256,8 @@ export default function FormAnalytics() {
                                     style={{ marginTop: 3, width: 18, height: 18, accentColor: 'var(--accent)' }}
                                 />
                                 <div>
-                                    <div style={{ fontWeight: 600, fontSize: 14 }}>Allow Anonymous Responses</div>
-                                    <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2, margin: 0, lineHeight: 1.5 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 14, color: '#1e2235' }}>Allow Anonymous Responses</div>
+                                    <p style={{ color: '#6b7280', fontSize: 12, marginTop: 2, margin: 0, lineHeight: 1.5 }}>
                                         Students must register and log in, but can choose to hide their name and roll number from the faculty analytics.
                                     </p>
                                 </div>
@@ -1262,7 +1269,7 @@ export default function FormAnalytics() {
                             <label style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--accent)', display: 'block', marginBottom: 6 }}>
                                 Re-attempt Cooldown Window
                             </label>
-                            <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 10 }}>
+                            <p style={{ color: '#6b7280', fontSize: 12, marginBottom: 10 }}>
                                 Number of days before a student is allowed to re-attempt this form. (0 = Single attempt only).
                             </p>
                             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
@@ -1272,9 +1279,9 @@ export default function FormAnalytics() {
                                     max="365"
                                     value={reattemptDays}
                                     onChange={e => setReattemptDays(Math.max(0, parseInt(e.target.value) || 0))}
-                                    style={{ width: 100, padding: '8px 12px', fontSize: 14 }}
+                                    style={{ width: 100, padding: '8px 12px', fontSize: 14, background: '#f8fafc', color: '#1e2235', border: '1px solid #dde1ec' }}
                                 />
-                                <span style={{ fontSize: 13, color: 'var(--muted)' }}>days between attempts</span>
+                                <span style={{ fontSize: 13, color: '#6b7280' }}>days between attempts</span>
                             </div>
                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                 {[
@@ -1289,13 +1296,14 @@ export default function FormAnalytics() {
                                         type="button"
                                         onClick={() => setReattemptDays(p.days)}
                                         style={{
-                                            padding: '4px 10px',
+                                            padding: '5px 12px',
                                             borderRadius: 6,
                                             fontSize: 12,
+                                            fontWeight: 500,
                                             cursor: 'pointer',
-                                            background: reattemptDays === p.days ? 'var(--accent)' : 'var(--bg)',
-                                            color: reattemptDays === p.days ? '#fff' : 'var(--muted)',
-                                            border: `1px solid ${reattemptDays === p.days ? 'var(--accent)' : 'var(--border)'}`
+                                            background: reattemptDays === p.days ? 'var(--accent)' : '#f8fafc',
+                                            color: reattemptDays === p.days ? '#fff' : '#6b7280',
+                                            border: `1px solid ${reattemptDays === p.days ? 'var(--accent)' : '#dde1ec'}`
                                         }}
                                     >
                                         {p.label}
