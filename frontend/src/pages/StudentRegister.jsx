@@ -14,6 +14,8 @@ export default function StudentRegister() {
     password: '',
     confirm: ''
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -190,34 +192,64 @@ export default function StudentRegister() {
             </div>
 
             {/* Password */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 6 }}>
                   Password *
                 </label>
-                <input
-                  id="student-reg-password"
-                  name="password"
-                  type="password"
-                  value={form.password}
-                  onChange={handle}
-                  placeholder="Min 6 chars"
-                  required
-                />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    id="student-reg-password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={form.password}
+                    onChange={handle}
+                    placeholder="Min 6 chars"
+                    required
+                    style={{ width: '100%', paddingRight: 40 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(p => !p)}
+                    style={{
+                      position: 'absolute', right: 10, background: 'none', border: 'none',
+                      cursor: 'pointer', fontSize: 15, padding: '4px', color: 'var(--muted)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? '🙈' : '👁️'}
+                  </button>
+                </div>
               </div>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 6 }}>
-                  Confirm *
+                  Confirm Password *
                 </label>
-                <input
-                  id="student-reg-confirm"
-                  name="confirm"
-                  type="password"
-                  value={form.confirm}
-                  onChange={handle}
-                  placeholder="Re-enter password"
-                  required
-                />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    id="student-reg-confirm"
+                    name="confirm"
+                    type={showConfirm ? 'text' : 'password'}
+                    value={form.confirm}
+                    onChange={handle}
+                    placeholder="Re-enter password"
+                    required
+                    style={{ width: '100%', paddingRight: 40 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm(p => !p)}
+                    style={{
+                      position: 'absolute', right: 10, background: 'none', border: 'none',
+                      cursor: 'pointer', fontSize: 15, padding: '4px', color: 'var(--muted)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}
+                    title={showConfirm ? 'Hide password' : 'Show password'}
+                  >
+                    {showConfirm ? '🙈' : '👁️'}
+                  </button>
+                </div>
               </div>
             </div>
 
