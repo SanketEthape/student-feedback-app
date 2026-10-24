@@ -788,20 +788,164 @@ router.patch('/:id/topics/videos', auth, async (req, res) => {
 // ======================================================
 // Get available student classes and divisions for targeting
 // ======================================================
+// ADD NEW QUESTION TO FORM (Faculty Only)
+// ======================================================
+router.post('/:id/questions', auth, async (req, res) => {
+    try {
+        const form = await Form.findOne({ _id: req.params.id, faculty: req.faculty.id });
+        if (!form) return res.status(404).json({ message: 'Form not found' });
+
+        const { question, type, topic, options, correctOption, explanation, expectedAnswer, isApproved } = req.body;
+        if (!question || !question.trim()) {
+            return res.status(400).json({ message: 'Question text is required' });
+        }
+
+        const qType = ['mcq', 'scale', 'text'].includes(type) ? type : 'mcq';
+        const newQ = {
+            question: question.trim(),
+            type: qType,
+            topic: (topic || form.subject || 'General').trim(),
+            isApproved: isApproved !== undefined ? !!isApproved : true
+        };
+
+        if (qType === 'mcq') {
+            const cleanedOpts = Array.isArray(options) ? options.map(o => String(o).trim()).filter(Boolean) : [];
+            if (cleanedOpts.length < 2) {
+                return res.status(400).json({ message: 'MCQ must have at least 2 non-empty options' });
+            }
+            newQ.options = cleanedOpts;
+            newQ.correctOption = (correctOption || cleanedOpts[0] || '').trim();
+            newQ.explanation = (explanation || '').trim();
+        } else if (qType === 'scale') {
+            newQ.options = ['1', '2', '3', '4', '5'];
+        } else if (qType === 'text') {
+            newQ.expectedAnswer = (expectedAnswer || '').trim();
+            newQ.options = [];
+        }
+
+        form.questions.push(newQ);
+        await form.save();
+
+        res.json(form);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// ======================================================
+// DELETE QUESTION FROM FORM (Faculty Only)
+// ======================================================
+router.delete('/:id/questions/:qIndex', auth, async (req, res) => {
+    try {
+        const form = await Form.findOne({ _id: req.params.id, faculty: req.faculty.id });
+        if (!form) return res.status(404).json({ message: 'Form not found' });
+
+        const qIndex = parseInt(req.params.qIndex);
+        if (isNaN(qIndex) || qIndex < 0 || qIndex >= form.questions.length) {
+            return res.status(400).json({ message: 'Invalid question index' });
+        }
+
+        form.questions.splice(qIndex, 1);
+        await form.save();
+
+        res.json(form);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// ======================================================
+// AI GENERATE SINGLE QUESTION AND ADD TO FORM (Faculty Only)
+// ======================================================
+router.post('/:id/questions/generate-ai', auth, async (req, res) => {
+    try {
+        const form = await Form.findOne({ _id: req.params.id, faculty: req.faculty.id });
+        if (!form) return res.status(404).json({ message: 'Form not found' });
+
+        const faculty = await Faculty.findById(req.faculty.id);
+        const apiKey = faculty?.geminiApiKey ? decrypt(faculty.geminiApiKey) : process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            return res.status(400).json({ message: 'Gemini API key not configured' });
+        }
+
+        const { type = 'mcq', topic } = req.body;
+        const targetType = ['mcq', 'text', 'scale'].includes(type) ? type : 'mcq';
+        const targetTopic = (topic || form.subject || 'General').trim();
+
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+        const prompt = `You are an expert college professor creating an assessment question.
+Subject: ${form.subject}
+Syllabus:
+${form.syllabus}
+
+Task: Generate ONE new high-quality ${targetType === 'mcq' ? 'MCQ question with 4 options' : targetType === 'text' ? 'descriptive conceptual question' : 'rating scale question'} focusing on topic: "${targetTopic}".
+Existing questions count: ${form.questions.length}. Ensure this question is unique and not repetitive.
+
+Respond ONLY with a valid JSON object in this exact format (no markdown formatting, no code blocks):
+{
+  "topic": "${targetTopic}",
+  "question": "Clear and concise question text",
+  "type": "${targetType}",
+  ${targetType === 'mcq' ? `"options": ["Option A", "Option B", "Option C", "Option D"],
+  "correctOption": "Option A",
+  "explanation": "Brief student explanation"` : targetType === 'text' ? `"expectedAnswer": "Key points to cover"` : `"options": ["1", "2", "3", "4", "5"]`}
+}`;
+
+        const aiRes = await model.generateContent(prompt);
+        const text = aiRes.response.text().replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(text);
+
+        const newQ = {
+            topic: parsed.topic || targetTopic,
+            question: parsed.question,
+            type: targetType,
+            options: targetType === 'mcq' ? (parsed.options || []) : targetType === 'scale' ? ['1', '2', '3', '4', '5'] : [],
+            correctOption: parsed.correctOption || '',
+            explanation: parsed.explanation || '',
+            expectedAnswer: parsed.expectedAnswer || '',
+            isApproved: true
+        };
+
+        form.questions.push(newQ);
+        await form.save();
+
+        res.json(form);
+    } catch (err) {
+        console.error('AI question generation error:', err);
+        res.status(500).json({ message: err.message || 'Failed to generate question with AI' });
+    }
+});
+
+// ======================================================
+// Get available target classes, divisions, and branches
+// ======================================================
 router.get('/:id/available-targets', auth, async (req, res) => {
     try {
         const registeredClasses = await Student.distinct('studentClass');
         const registeredDivisions = await Student.distinct('division');
+        const registeredBranches = await Student.distinct('branch');
 
         const defaultClasses = ['FY', 'SY', 'TY', 'Final Year'];
         const defaultDivisions = ['A', 'B', 'C', 'D'];
+        const defaultBranches = [
+            'Computer Engineering',
+            'Information Technology',
+            'AI & Data Science',
+            'Electronics & Telecommunication',
+            'Mechanical Engineering',
+            'Civil Engineering'
+        ];
 
         const allClasses = [...new Set([...defaultClasses, ...registeredClasses.filter(Boolean)])];
         const allDivisions = [...new Set([...defaultDivisions, ...registeredDivisions.filter(Boolean)])];
+        const allBranches = [...new Set([...defaultBranches, ...registeredBranches.filter(Boolean)])];
 
         res.json({
             classes: allClasses,
-            divisions: allDivisions
+            divisions: allDivisions,
+            branches: allBranches
         });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -809,7 +953,7 @@ router.get('/:id/available-targets', auth, async (req, res) => {
 });
 
 // ======================================================
-// Publish form to target classes and divisions + notify students
+// Publish form to target classes, divisions, and branches + notify students
 // ======================================================
 router.post('/:id/publish', auth, async (req, res) => {
     try {
@@ -817,13 +961,16 @@ router.post('/:id/publish', auth, async (req, res) => {
             .populate('faculty', 'name department');
         if (!form) return res.status(404).json({ message: 'Form not found' });
 
-        const { targetClasses, targetDivisions, allowAnonymous, reattemptDays } = req.body;
+        const { targetClasses, targetDivisions, targetBranches, allowAnonymous, reattemptDays } = req.body;
 
         form.targetClasses = Array.isArray(targetClasses)
             ? targetClasses.map(c => String(c).trim()).filter(Boolean)
             : [];
         form.targetDivisions = Array.isArray(targetDivisions)
             ? targetDivisions.map(d => String(d).trim().toUpperCase()).filter(Boolean)
+            : [];
+        form.targetBranches = Array.isArray(targetBranches)
+            ? targetBranches.map(b => String(b).trim()).filter(Boolean)
             : [];
         form.allowAnonymous = allowAnonymous !== undefined ? !!allowAnonymous : true;
         form.reattemptDays = typeof reattemptDays === 'number' && reattemptDays >= 0 ? reattemptDays : 0;
@@ -840,8 +987,11 @@ router.post('/:id/publish', auth, async (req, res) => {
         if (form.targetDivisions.length > 0) {
             studentQuery.division = { $in: form.targetDivisions };
         }
+        if (form.targetBranches.length > 0) {
+            studentQuery.branch = { $in: form.targetBranches };
+        }
 
-        const matchingStudents = await Student.find(studentQuery).select('_id name studentClass division');
+        const matchingStudents = await Student.find(studentQuery).select('_id name studentClass division branch');
 
         // Create notifications for matching students
         if (matchingStudents.length > 0) {

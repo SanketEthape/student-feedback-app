@@ -69,6 +69,17 @@ router.get('/check-access/:link', studentAuth, async (req, res) => {
             }
         }
 
+        // Check branch targeting
+        if (form.targetBranches && form.targetBranches.length > 0) {
+            if (!form.targetBranches.includes(student.branch)) {
+                return res.status(403).json({
+                    allowed: false,
+                    reason: 'branch_mismatch',
+                    message: `This assessment is restricted to branch: ${form.targetBranches.join(', ')}. Your registered branch is ${student.branch || 'Not Specified'}.`
+                });
+            }
+        }
+
         // Check past submissions & retake cooldown
         const pastResponses = await Response.find({
             form: form._id,
@@ -141,6 +152,7 @@ router.get('/check-access/:link', studentAuth, async (req, res) => {
                 rollNo: student.rollNo,
                 studentClass: student.studentClass,
                 division: student.division,
+                branch: student.branch || 'Computer Engineering',
                 hasApiKey: !!student.geminiApiKey
             },
             attemptNumber: pastResponses.length + 1
@@ -202,6 +214,14 @@ router.post('/submit/:link', studentAuth, async (req, res) => {
             if (!form.targetDivisions.includes(student.division)) {
                 return res.status(403).json({
                     message: `This assessment is restricted to division: ${form.targetDivisions.join(', ')}. Your registered division is ${student.division}.`
+                });
+            }
+        }
+
+        if (form.targetBranches && form.targetBranches.length > 0) {
+            if (!form.targetBranches.includes(student.branch)) {
+                return res.status(403).json({
+                    message: `This assessment is restricted to branch: ${form.targetBranches.join(', ')}. Your registered branch is ${student.branch || 'Not Specified'}.`
                 });
             }
         }

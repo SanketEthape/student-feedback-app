@@ -130,6 +130,11 @@ const FormSchema = new mongoose.Schema({
         default: []
     },
 
+    targetBranches: {
+        type: [String],
+        default: []
+    },
+
     allowAnonymous: {
         type: Boolean,
         default: true

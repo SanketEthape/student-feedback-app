@@ -23,16 +23,41 @@ export default function FormAnalytics() {
     const [videoLinks, setVideoLinks] = useState([]);
     const [savingVideos, setSavingVideos] = useState(false);
 
-    // Publishing & Target Classes/Divisions State
+    // Publishing & Target Classes/Divisions/Branches State
     const [showPublishModal, setShowPublishModal] = useState(false);
     const [publishing, setPublishing] = useState(false);
+    const [targetBranches, setTargetBranches] = useState([]);
     const [targetClasses, setTargetClasses] = useState([]);
     const [targetDivisions, setTargetDivisions] = useState([]);
     const [allowAnonymous, setAllowAnonymous] = useState(true);
     const [reattemptDays, setReattemptDays] = useState(0);
     const [availableTargets, setAvailableTargets] = useState({
+        branches: [
+            'Computer Engineering',
+            'Information Technology',
+            'AI & Data Science',
+            'Electronics & Telecommunication',
+            'Mechanical Engineering',
+            'Civil Engineering',
+            'Electrical Engineering'
+        ],
         classes: ['FY', 'SY', 'TY', 'Final Year'],
         divisions: ['A', 'B', 'C', 'D']
+    });
+
+    // Add New Question to Form State
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [addingQuestion, setAddingQuestion] = useState(false);
+    const [aiGenerating, setAiGenerating] = useState(false);
+    const [deletingIdx, setDeletingIdx] = useState(null);
+    const [newQuestionData, setNewQuestionData] = useState({
+        question: '',
+        type: 'mcq',
+        topic: '',
+        options: ['', '', '', ''],
+        correctOption: '',
+        explanation: '',
+        expectedAnswer: ''
     });
 
     useEffect(() => {
@@ -47,6 +72,7 @@ export default function FormAnalytics() {
             setResponses(r.data);
 
             // Initialize publishing settings
+            setTargetBranches(f.data.targetBranches || []);
             setTargetClasses(f.data.targetClasses || []);
             setTargetDivisions(f.data.targetDivisions || []);
             setAllowAnonymous(f.data.allowAnonymous !== undefined ? f.data.allowAnonymous : true);
@@ -54,6 +80,15 @@ export default function FormAnalytics() {
 
             if (targetsRes?.data) {
                 setAvailableTargets({
+                    branches: targetsRes.data.branches?.length ? targetsRes.data.branches : [
+                        'Computer Engineering',
+                        'Information Technology',
+                        'AI & Data Science',
+                        'Electronics & Telecommunication',
+                        'Mechanical Engineering',
+                        'Civil Engineering',
+                        'Electrical Engineering'
+                    ],
                     classes: targetsRes.data.classes?.length ? targetsRes.data.classes : ['FY', 'SY', 'TY', 'Final Year'],
                     divisions: targetsRes.data.divisions?.length ? targetsRes.data.divisions : ['A', 'B', 'C', 'D']
                 });
@@ -74,6 +109,10 @@ export default function FormAnalytics() {
     }, [id]);
 
     const handlePublishForm = async () => {
+        if (targetBranches.length === 0) {
+            alert('Please select at least one branch/department to target (e.g. Computer Engineering, IT).');
+            return;
+        }
         if (targetClasses.length === 0) {
             alert('Please select at least one class to target (e.g. FY, SY, TY, Final Year).');
             return;
@@ -85,6 +124,7 @@ export default function FormAnalytics() {
         setPublishing(true);
         try {
             const { data } = await api.post(`/forms/${id}/publish`, {
+                targetBranches,
                 targetClasses,
                 targetDivisions,
                 allowAnonymous,
@@ -99,6 +139,12 @@ export default function FormAnalytics() {
             setPublishing(false);
             setTimeout(() => setActionMsg(''), 4500);
         }
+    };
+
+    const toggleTargetBranch = (br) => {
+        setTargetBranches(prev =>
+            prev.includes(br) ? prev.filter(b => b !== br) : [...prev, br]
+        );
     };
 
     const toggleTargetClass = (cls) => {
@@ -245,6 +291,99 @@ export default function FormAnalytics() {
         }
     };
 
+    // Add New Question Handlers
+    const resetNewQuestionForm = () => {
+        const availableTopics = [...new Set((form?.questions || []).map(q => q.topic?.trim()).filter(Boolean))];
+        setNewQuestionData({
+            question: '',
+            type: 'mcq',
+            topic: availableTopics[0] || (form?.subject ? `${form.subject} Fundamentals` : 'General'),
+            options: ['', '', '', ''],
+            correctOption: '',
+            explanation: '',
+            expectedAnswer: ''
+        });
+    };
+
+    const handleCreateQuestion = async () => {
+        if (!newQuestionData.question.trim()) {
+            alert('Please enter question text');
+            return;
+        }
+        if (!newQuestionData.topic.trim()) {
+            alert('Please enter or select a syllabus topic');
+            return;
+        }
+
+        const payload = { ...newQuestionData };
+
+        if (payload.type === 'mcq') {
+            const cleanedOptions = payload.options.map(o => o.trim()).filter(Boolean);
+            if (cleanedOptions.length < 2) {
+                alert('MCQ must have at least 2 non-empty options');
+                return;
+            }
+            if (!payload.correctOption || !cleanedOptions.includes(payload.correctOption.trim())) {
+                alert('Please select a valid correct option among the provided choices');
+                return;
+            }
+            payload.options = cleanedOptions;
+            payload.correctOption = payload.correctOption.trim();
+        }
+
+        setAddingQuestion(true);
+        try {
+            const { data } = await api.post(`/forms/${id}/questions`, payload);
+            setForm(data);
+            setShowAddModal(false);
+            resetNewQuestionForm();
+            setActionMsg('➕ Question added to form successfully!');
+        } catch (e) {
+            setActionMsg('❌ ' + (e.response?.data?.message || 'Failed to add question'));
+        } finally {
+            setAddingQuestion(false);
+            setTimeout(() => setActionMsg(''), 4000);
+        }
+    };
+
+    const handleGenerateSingleAI = async () => {
+        if (!newQuestionData.topic.trim()) {
+            alert('Please provide a topic for AI question generation');
+            return;
+        }
+        setAiGenerating(true);
+        try {
+            const { data } = await api.post(`/forms/${id}/questions/generate-ai`, {
+                topic: newQuestionData.topic.trim(),
+                type: newQuestionData.type
+            });
+            setForm(data.form);
+            setShowAddModal(false);
+            resetNewQuestionForm();
+            setActionMsg('✨ AI Question generated and added to form!');
+        } catch (e) {
+            setActionMsg('❌ ' + (e.response?.data?.message || 'Failed to generate AI question'));
+        } finally {
+            setAiGenerating(false);
+            setTimeout(() => setActionMsg(''), 4000);
+        }
+    };
+
+    const handleDeleteQuestion = async (qIndex) => {
+        if (!confirm(`Are you sure you want to delete Question #${qIndex + 1}? This action cannot be undone.`)) return;
+        setDeletingIdx(qIndex);
+        try {
+            const { data } = await api.delete(`/forms/${id}/questions/${qIndex}`);
+            setForm(data);
+            setActionMsg('🗑️ Question removed from form.');
+        } catch (e) {
+            setActionMsg('❌ ' + (e.response?.data?.message || 'Failed to delete question'));
+        } finally {
+            setDeletingIdx(null);
+            setTimeout(() => setActionMsg(''), 3000);
+        }
+    };
+
     // Save topic video links
     const saveVideoLinks = async () => {
         setSavingVideos(true);
@@ -322,7 +461,7 @@ export default function FormAnalytics() {
                                 gap: 6
                             }}>
                                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
-                                Published: {form.targetClasses?.join(', ')} ({form.targetDivisions?.join(', ')})
+                                Published: {form.targetBranches?.length ? (form.targetBranches.length > 2 ? `${form.targetBranches.slice(0, 2).join(', ')} +${form.targetBranches.length - 2}` : form.targetBranches.join(', ')) : 'All Branches'} · {form.targetClasses?.join(', ')} ({form.targetDivisions?.join(', ')})
                             </span>
                             <button className="btn btn-secondary" onClick={() => setShowPublishModal(true)} style={{ fontSize: 13, padding: '6px 12px' }}>
                                 ⚙️ Target &amp; Settings
@@ -707,17 +846,30 @@ export default function FormAnalytics() {
             {/* ========================================================= */}
             {tab === 'questions' && (
                 <div style={{ display: 'grid', gap: 16 }}>
-                    {/* Summary bar */}
+                    {/* Summary & Action bar */}
                     <div style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         background: allApproved ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.07)',
                         border: `1px solid ${allApproved ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.3)'}`,
-                        borderRadius: 10, padding: '12px 18px', fontSize: 14
+                        borderRadius: 10, padding: '12px 18px', fontSize: 14, flexWrap: 'wrap', gap: 10
                     }}>
-                        <span style={{ color: allApproved ? '#059669' : '#b45309', fontWeight: 600 }}>
-                            {allApproved ? '✅ All questions approved — form is ready to share!' : `⏳ ${totalQuestions - approvedCount} question${totalQuestions - approvedCount > 1 ? 's' : ''} still need your approval`}
-                        </span>
-                        <span style={{ color: 'var(--muted)', fontSize: 13 }}>{approvedCount} of {totalQuestions} approved</span>
+                        <div>
+                            <span style={{ color: allApproved ? '#059669' : '#b45309', fontWeight: 600 }}>
+                                {allApproved ? '✅ All questions approved — form is ready to share!' : `⏳ ${totalQuestions - approvedCount} question${totalQuestions - approvedCount > 1 ? 's' : ''} still need your approval`}
+                            </span>
+                            <span style={{ color: 'var(--muted)', fontSize: 13, marginLeft: 10 }}>{approvedCount} of {totalQuestions} approved</span>
+                        </div>
+                        <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={() => {
+                                resetNewQuestionForm();
+                                setShowAddModal(true);
+                            }}
+                            style={{ fontSize: 13, padding: '7px 16px', display: 'flex', alignItems: 'center', gap: 6 }}
+                        >
+                            ➕ Add New Question
+                        </button>
                     </div>
 
                     {form.questions.map((q, i) => (
@@ -737,13 +889,13 @@ export default function FormAnalytics() {
                                 </div>
 
                                 {/* Action buttons */}
-                                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                                <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                                     {/* Manual Edit Button */}
                                     <button
                                         className="btn btn-secondary"
                                         style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
                                         onClick={() => editingIdx === i ? cancelManualEdit() : startManualEdit(i)}
-                                        disabled={regeneratingIdx === i || savingEdit}
+                                        disabled={regeneratingIdx === i || savingEdit || deletingIdx === i}
                                         title="Manually edit / reframe question"
                                     >
                                         {editingIdx === i ? '✕ Cancel Edit' : '✏️ Manual Reframe'}
@@ -754,7 +906,7 @@ export default function FormAnalytics() {
                                         className="btn btn-warning"
                                         style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
                                         onClick={() => handleRegenerate(i)}
-                                        disabled={regeneratingIdx === i || approvingIdx === i || editingIdx === i}
+                                        disabled={regeneratingIdx === i || approvingIdx === i || editingIdx === i || deletingIdx === i}
                                         title="Regenerate this question using AI"
                                     >
                                         {regeneratingIdx === i ? (
@@ -770,7 +922,7 @@ export default function FormAnalytics() {
                                         className={`btn ${q.isApproved ? 'btn-success' : 'btn-secondary'}`}
                                         style={{ fontSize: 12, padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 5 }}
                                         onClick={() => handleApprove(i)}
-                                        disabled={approvingIdx === i || regeneratingIdx === i || editingIdx === i}
+                                        disabled={approvingIdx === i || regeneratingIdx === i || editingIdx === i || deletingIdx === i}
                                         title={q.isApproved ? 'Revoke approval' : 'Approve this question'}
                                     >
                                         {approvingIdx === i ? (
@@ -779,6 +931,18 @@ export default function FormAnalytics() {
                                                 Saving...
                                             </>
                                         ) : q.isApproved ? '✓ Approved' : '✓ Approve'}
+                                    </button>
+
+                                    {/* Delete Question Button */}
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        style={{ fontSize: 12, padding: '6px 10px', color: '#dc2626', borderColor: '#fca5a5' }}
+                                        onClick={() => handleDeleteQuestion(i)}
+                                        disabled={deletingIdx === i || editingIdx === i || form.questions.length <= 1}
+                                        title={form.questions.length <= 1 ? 'Cannot delete the only question' : 'Delete question'}
+                                    >
+                                        {deletingIdx === i ? '...' : '🗑️'}
                                     </button>
                                 </div>
                             </div>
@@ -1158,6 +1322,47 @@ export default function FormAnalytics() {
                             </button>
                         </div>
 
+                        {/* Target Branches / Departments */}
+                        <div style={{ marginBottom: 20 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                <label style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--accent)' }}>
+                                    Target Branches / Departments *
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={() => setTargetBranches(targetBranches.length === availableTargets.branches.length ? [] : [...availableTargets.branches])}
+                                    style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+                                >
+                                    {targetBranches.length === availableTargets.branches.length ? 'Deselect All' : 'Select All'}
+                                </button>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                {availableTargets.branches.map(br => {
+                                    const selected = targetBranches.includes(br);
+                                    return (
+                                        <button
+                                            key={br}
+                                            type="button"
+                                            onClick={() => toggleTargetBranch(br)}
+                                            style={{
+                                                padding: '7px 14px',
+                                                borderRadius: 8,
+                                                fontSize: 12,
+                                                fontWeight: 600,
+                                                cursor: 'pointer',
+                                                border: `1.5px solid ${selected ? 'var(--accent)' : '#dde1ec'}`,
+                                                background: selected ? 'rgba(79,110,247,0.12)' : '#f8fafc',
+                                                color: selected ? 'var(--accent)' : '#1e2235',
+                                                transition: 'all 0.15s'
+                                            }}
+                                        >
+                                            {selected ? '✓ ' : '+ '} {br}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
                         {/* Target Classes */}
                         <div style={{ marginBottom: 20 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -1330,6 +1535,261 @@ export default function FormAnalytics() {
                                 style={{ minWidth: 150 }}
                             >
                                 {publishing ? 'Publishing...' : form.isPublished ? 'Update & Re-Publish' : '📢 Publish & Notify'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* ADD NEW QUESTION MODAL (Manual or AI generated) */}
+            {/* ========================================================= */}
+            {showAddModal && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 1000,
+                    background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(6px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '20px 16px'
+                }} onClick={() => !addingQuestion && !aiGenerating && setShowAddModal(false)}>
+                    <div style={{
+                        background: '#ffffff',
+                        color: '#1e2235',
+                        borderRadius: 16,
+                        width: '100%',
+                        maxWidth: 620,
+                        maxHeight: '92vh',
+                        overflowY: 'auto',
+                        padding: 28,
+                        boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.08)',
+                        border: '1px solid #dde1ec'
+                    }} onClick={e => e.stopPropagation()}>
+                        {/* Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
+                            <div>
+                                <h3 style={{ fontSize: 20, marginBottom: 4, color: '#1e2235' }}>➕ Add New Question</h3>
+                                <p style={{ color: '#6b7280', fontSize: 13, margin: 0 }}>
+                                    Add a question to this form. It works whether the form is in draft or previously published!
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => !addingQuestion && !aiGenerating && setShowAddModal(false)}
+                                style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#6b7280' }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Question Type Switcher */}
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--accent)', display: 'block', marginBottom: 6 }}>
+                                Question Type
+                            </label>
+                            <div style={{ display: 'flex', gap: 6, background: '#f1f5f9', padding: 4, borderRadius: 10 }}>
+                                {[
+                                    { id: 'mcq', label: '🔘 MCQ (Multiple Choice)' },
+                                    { id: 'text', label: '✍️ Descriptive / Text' },
+                                    { id: 'scale', label: '📊 Scale (1-5 Rating)' }
+                                ].map(t => (
+                                    <button
+                                        key={t.id}
+                                        type="button"
+                                        onClick={() => {
+                                            const opts = t.id === 'mcq'
+                                                ? (newQuestionData.options.length >= 2 ? newQuestionData.options : ['', '', '', ''])
+                                                : (t.id === 'scale' ? ['1', '2', '3', '4', '5'] : []);
+                                            setNewQuestionData({
+                                                ...newQuestionData,
+                                                type: t.id,
+                                                options: opts,
+                                                correctOption: t.id === 'mcq' ? (opts[0] || '') : ''
+                                            });
+                                        }}
+                                        style={{
+                                            flex: 1, padding: '8px 10px', fontSize: 12, fontWeight: 600,
+                                            borderRadius: 8, border: 'none', cursor: 'pointer',
+                                            background: newQuestionData.type === t.id ? '#ffffff' : 'transparent',
+                                            color: newQuestionData.type === t.id ? 'var(--accent)' : '#64748b',
+                                            boxShadow: newQuestionData.type === t.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                            transition: 'all 0.15s'
+                                        }}
+                                    >
+                                        {t.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Syllabus Topic */}
+                        <div style={{ marginBottom: 16 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                <label style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--accent)' }}>
+                                    Syllabus Topic *
+                                </label>
+                                <span style={{ fontSize: 12, color: '#6b7280' }}>
+                                    Existing topics from form:
+                                </span>
+                            </div>
+                            <input
+                                type="text"
+                                list="available-topics-list"
+                                required
+                                value={newQuestionData.topic}
+                                onChange={e => setNewQuestionData({ ...newQuestionData, topic: e.target.value })}
+                                placeholder="e.g. Binary Search Trees, Normalized Databases, etc."
+                                style={{ width: '100%', padding: '9px 12px', fontSize: 14, borderRadius: 8, border: '1px solid #dde1ec', background: '#f8fafc', color: '#1e2235' }}
+                            />
+                            <datalist id="available-topics-list">
+                                {[...new Set((form.questions || []).map(q => q.topic?.trim()).filter(Boolean))].map((t, i) => (
+                                    <option key={i} value={t} />
+                                ))}
+                            </datalist>
+                        </div>
+
+                        {/* AI Quick Generator Box */}
+                        <div style={{
+                            background: 'linear-gradient(135deg, rgba(79,110,247,0.06), rgba(124,106,247,0.04))',
+                            border: '1px dashed rgba(79,110,247,0.3)',
+                            borderRadius: 10,
+                            padding: '12px 16px',
+                            marginBottom: 18,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 12,
+                            flexWrap: 'wrap'
+                        }}>
+                            <div>
+                                <strong style={{ fontSize: 13, color: 'var(--accent)', display: 'block' }}>✨ Want AI to craft this question?</strong>
+                                <span style={{ fontSize: 12, color: '#64748b' }}>
+                                    Gemini will generate a high-quality {newQuestionData.type.toUpperCase()} question for topic <em>"{newQuestionData.topic || 'specified above'}"</em>.
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn btn-warning"
+                                onClick={handleGenerateSingleAI}
+                                disabled={aiGenerating || addingQuestion || !newQuestionData.topic.trim()}
+                                style={{ fontSize: 12, padding: '7px 14px', whiteSpace: 'nowrap' }}
+                            >
+                                {aiGenerating ? 'Generating...' : '✨ Generate with AI'}
+                            </button>
+                        </div>
+
+                        {/* Question Prompt */}
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--accent)', display: 'block', marginBottom: 6 }}>
+                                Question Prompt *
+                            </label>
+                            <textarea
+                                required
+                                value={newQuestionData.question}
+                                onChange={e => setNewQuestionData({ ...newQuestionData, question: e.target.value })}
+                                rows={3}
+                                placeholder="Enter the question text here..."
+                                style={{ width: '100%', padding: '10px 12px', fontSize: 14, borderRadius: 8, border: '1px solid #dde1ec', background: '#f8fafc', color: '#1e2235', resize: 'vertical' }}
+                            />
+                        </div>
+
+                        {/* MCQ Options & Correct Option Picker */}
+                        {newQuestionData.type === 'mcq' && (
+                            <div style={{
+                                background: '#f8fafc',
+                                border: '1px solid #dde1ec',
+                                borderRadius: 10,
+                                padding: 16,
+                                marginBottom: 18
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                    <label style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--accent)' }}>
+                                        Options (Select radio for correct answer) *
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewQuestionData({ ...newQuestionData, options: [...newQuestionData.options, ''] })}
+                                        style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+                                    >
+                                        + Add Option
+                                    </button>
+                                </div>
+
+                                <div style={{ display: 'grid', gap: 10 }}>
+                                    {newQuestionData.options.map((opt, optIdx) => (
+                                        <div key={optIdx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                            <input
+                                                type="radio"
+                                                name="new-q-correct-opt"
+                                                checked={newQuestionData.correctOption === opt && opt !== ''}
+                                                onChange={() => setNewQuestionData({ ...newQuestionData, correctOption: opt })}
+                                                title="Mark as correct answer"
+                                                style={{ accentColor: '#10b981', width: 16, height: 16, cursor: 'pointer' }}
+                                            />
+                                            <input
+                                                type="text"
+                                                value={opt}
+                                                onChange={e => {
+                                                    const updated = [...newQuestionData.options];
+                                                    const oldVal = updated[optIdx];
+                                                    updated[optIdx] = e.target.value;
+                                                    const newCorrect = newQuestionData.correctOption === oldVal ? e.target.value : newQuestionData.correctOption;
+                                                    setNewQuestionData({ ...newQuestionData, options: updated, correctOption: newCorrect });
+                                                }}
+                                                placeholder={`Option ${optIdx + 1}`}
+                                                style={{ flex: 1, padding: '8px 12px', fontSize: 13, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, color: '#1e2235' }}
+                                            />
+                                            {newQuestionData.options.length > 2 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const removed = newQuestionData.options[optIdx];
+                                                        const updated = newQuestionData.options.filter((_, i) => i !== optIdx);
+                                                        const newCorrect = newQuestionData.correctOption === removed ? (updated[0] || '') : newQuestionData.correctOption;
+                                                        setNewQuestionData({ ...newQuestionData, options: updated, correctOption: newCorrect });
+                                                    }}
+                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14 }}
+                                                >
+                                                    ✕
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Descriptive Expected Answer */}
+                        {newQuestionData.type === 'text' && (
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--accent)', display: 'block', marginBottom: 6 }}>
+                                    Expected Key Points / Answer Outline (Optional)
+                                </label>
+                                <textarea
+                                    value={newQuestionData.expectedAnswer || ''}
+                                    onChange={e => setNewQuestionData({ ...newQuestionData, expectedAnswer: e.target.value })}
+                                    rows={2}
+                                    placeholder="Outline the core ideas or keywords expected in student response..."
+                                    style={{ width: '100%', padding: '8px 12px', fontSize: 13, borderRadius: 8, border: '1px solid #dde1ec', background: '#f8fafc', color: '#1e2235' }}
+                                />
+                            </div>
+                        )}
+
+                        {/* Modal Action Buttons */}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 16, borderTop: '1px solid #dde1ec' }}>
+                            <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => setShowAddModal(false)}
+                                disabled={addingQuestion || aiGenerating}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={handleCreateQuestion}
+                                disabled={addingQuestion || aiGenerating}
+                                style={{ minWidth: 150 }}
+                            >
+                                {addingQuestion ? 'Adding Question...' : '➕ Save & Add Question'}
                             </button>
                         </div>
                     </div>

@@ -6,7 +6,7 @@ const StudentSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
 
-    // Compulsory student class and division
+    // Compulsory student class, division, and branch
     studentClass: {
         type: String,
         required: [true, 'Class is required'],
@@ -18,6 +18,13 @@ const StudentSchema = new mongoose.Schema({
         required: [true, 'Division is required'],
         trim: true,
         uppercase: true
+    },
+
+    branch: {
+        type: String,
+        required: [true, 'Branch is required'],
+        trim: true,
+        default: 'Computer Engineering'
     },
 
     // Compulsory roll number

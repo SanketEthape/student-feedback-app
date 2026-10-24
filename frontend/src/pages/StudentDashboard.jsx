@@ -246,6 +246,7 @@ export default function StudentDashboard() {
   const [profileFormData, setProfileFormData] = useState({
     name: '',
     rollNo: '',
+    branch: 'Computer Engineering',
     studentClass: 'FY',
     division: 'A',
     currentPassword: '',
@@ -297,6 +298,7 @@ export default function StudentDashboard() {
     setProfileFormData({
       name: profile?.name || '',
       rollNo: profile?.rollNo || '',
+      branch: profile?.branch || 'Computer Engineering',
       studentClass: profile?.studentClass || 'FY',
       division: profile?.division || 'A',
       currentPassword: '',
@@ -316,6 +318,10 @@ export default function StudentDashboard() {
       setProfileMsg('❌ Roll number cannot be empty');
       return;
     }
+    if (!profileFormData.branch.trim()) {
+      setProfileMsg('❌ Branch cannot be empty');
+      return;
+    }
     if (!profileFormData.division.trim()) {
       setProfileMsg('❌ Division cannot be empty');
       return;
@@ -331,6 +337,7 @@ export default function StudentDashboard() {
       const payload = {
         name: profileFormData.name.trim(),
         rollNo: profileFormData.rollNo.trim(),
+        branch: profileFormData.branch.trim(),
         studentClass: profileFormData.studentClass,
         division: profileFormData.division.trim().toUpperCase()
       };
@@ -345,7 +352,7 @@ export default function StudentDashboard() {
       setProfileMsg('✅ Profile updated successfully!');
       setTimeout(() => setProfileMsg(''), 4000);
 
-      // Refresh notifications in case class or division targeting changed
+      // Refresh notifications in case class, division or branch targeting changed
       const notifRes = await studentApi.get('/notifications/my').catch(() => ({ data: [] }));
       setNotifications(notifRes.data || []);
     } catch (err) {
@@ -424,6 +431,7 @@ export default function StudentDashboard() {
           <div>
             <h1 style={{ fontSize: 22, marginBottom: 4 }}>Welcome back, {profile?.name}! 👋</h1>
             <p style={{ color: 'var(--muted)', fontSize: 14 }}>
+              {profile?.branch && <><strong>Branch:</strong> {profile.branch} · </>}
               {profile?.studentClass && <><strong>Class:</strong> {profile.studentClass} ({profile.division}) · </>}
               {profile?.rollNo && <><strong>Roll No:</strong> {profile.rollNo} · </>}
               <strong>Submissions:</strong> {responses.length} assessment{responses.length !== 1 ? 's' : ''} completed
@@ -795,6 +803,7 @@ export default function StudentDashboard() {
                   {[
                     { label: 'Name', value: profile?.name },
                     { label: 'Email', value: profile?.email },
+                    { label: 'Branch / Dept', value: profile?.branch || 'Computer Engineering' },
                     { label: 'Class', value: profile?.studentClass || '—' },
                     { label: 'Division', value: profile?.division || '—' },
                     { label: 'Roll Number', value: profile?.rollNo || '—' },
@@ -820,6 +829,29 @@ export default function StudentDashboard() {
                         onChange={e => setProfileFormData({ ...profileFormData, name: e.target.value })}
                         style={{ width: '100%', padding: '9px 12px', fontSize: 14 }}
                       />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                        Branch / Department *
+                      </label>
+                      <select
+                        value={profileFormData.branch}
+                        onChange={e => setProfileFormData({ ...profileFormData, branch: e.target.value })}
+                        style={{ width: '100%', padding: '9px 12px', fontSize: 14, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}
+                      >
+                        {[
+                          'Computer Engineering',
+                          'Information Technology',
+                          'AI & Data Science',
+                          'Electronics & Telecommunication',
+                          'Mechanical Engineering',
+                          'Civil Engineering',
+                          'Electrical Engineering'
+                        ].map(b => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
                     </div>
 
                     <div>

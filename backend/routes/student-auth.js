@@ -9,14 +9,15 @@ const { encrypt, decrypt } = require('../utils/encryption');
 // ======================================================
 router.post('/register', async (req, res) => {
     try {
-        const { name, email, password, rollNo, studentClass, class: bodyClass, division } = req.body;
+        const { name, email, password, rollNo, studentClass, class: bodyClass, division, branch } = req.body;
         const targetClass = (studentClass || bodyClass || '').trim();
         const targetDiv = (division || '').trim().toUpperCase();
         const targetRoll = (rollNo || '').trim();
+        const targetBranch = (branch || 'Computer Engineering').trim();
 
-        if (!name || !email || !password || !targetClass || !targetDiv || !targetRoll) {
+        if (!name || !email || !password || !targetClass || !targetDiv || !targetRoll || !targetBranch) {
             return res.status(400).json({
-                message: 'All fields (Name, Email, Password, Class, Division, and Roll Number) are required.'
+                message: 'All fields (Name, Email, Password, Class, Division, Branch, and Roll Number) are required.'
             });
         }
         const exists = await Student.findOne({ email });
@@ -28,7 +29,8 @@ router.post('/register', async (req, res) => {
             password,
             rollNo: targetRoll,
             studentClass: targetClass,
-            division: targetDiv
+            division: targetDiv,
+            branch: targetBranch
         });
 
         const token = jwt.sign(
@@ -45,6 +47,7 @@ router.post('/register', async (req, res) => {
                 rollNo: student.rollNo,
                 studentClass: student.studentClass,
                 division: student.division,
+                branch: student.branch,
                 hasApiKey: false
             }
         });
@@ -78,6 +81,7 @@ router.post('/login', async (req, res) => {
                 rollNo: student.rollNo,
                 studentClass: student.studentClass || '',
                 division: student.division || '',
+                branch: student.branch || 'Computer Engineering',
                 hasApiKey: !!student.geminiApiKey
             }
         });
@@ -101,6 +105,7 @@ router.get('/me', studentAuth, async (req, res) => {
             rollNo: student.rollNo,
             studentClass: student.studentClass || '',
             division: student.division || '',
+            branch: student.branch || 'Computer Engineering',
             hasApiKey: !!student.geminiApiKey,
             createdAt: student.createdAt
         });
@@ -115,7 +120,7 @@ router.get('/me', studentAuth, async (req, res) => {
 // ======================================================
 router.put('/profile', studentAuth, async (req, res) => {
     try {
-        const { name, rollNo, studentClass, division, currentPassword, newPassword } = req.body;
+        const { name, rollNo, studentClass, division, branch, currentPassword, newPassword } = req.body;
         const student = await Student.findById(req.student.id);
         if (!student) return res.status(404).json({ message: 'Student not found' });
 
@@ -146,6 +151,12 @@ router.put('/profile', studentAuth, async (req, res) => {
             student.division = trimmedDiv;
         }
 
+        if (branch !== undefined) {
+            const trimmedBranch = String(branch).trim();
+            if (!trimmedBranch) return res.status(400).json({ message: 'Branch cannot be empty' });
+            student.branch = trimmedBranch;
+        }
+
         if (newPassword) {
             if (!currentPassword) {
                 return res.status(400).json({ message: 'Current password is required to change password' });
@@ -171,6 +182,7 @@ router.put('/profile', studentAuth, async (req, res) => {
                 rollNo: student.rollNo,
                 studentClass: student.studentClass,
                 division: student.division,
+                branch: student.branch,
                 hasApiKey: !!student.geminiApiKey,
                 createdAt: student.createdAt
             }
@@ -182,22 +194,33 @@ router.put('/profile', studentAuth, async (req, res) => {
 
 
 // ======================================================
-// GET ALL DISTINCT CLASSES & DIVISIONS (Public/Faculty)
+// GET ALL DISTINCT CLASSES, DIVISIONS & BRANCHES (Public/Faculty)
 // ======================================================
 router.get('/classes-divisions', async (req, res) => {
     try {
         const registeredClasses = await Student.distinct('studentClass');
         const registeredDivisions = await Student.distinct('division');
+        const registeredBranches = await Student.distinct('branch');
 
         const defaultClasses = ['FY', 'SY', 'TY', 'Final Year'];
         const defaultDivisions = ['A', 'B', 'C', 'D'];
+        const defaultBranches = [
+            'Computer Engineering',
+            'Information Technology',
+            'AI & Data Science',
+            'Electronics & Telecommunication',
+            'Mechanical Engineering',
+            'Civil Engineering'
+        ];
 
         const allClasses = [...new Set([...defaultClasses, ...registeredClasses.filter(Boolean)])];
         const allDivisions = [...new Set([...defaultDivisions, ...registeredDivisions.filter(Boolean)])];
+        const allBranches = [...new Set([...defaultBranches, ...registeredBranches.filter(Boolean)])];
 
         res.json({
             classes: allClasses,
-            divisions: allDivisions
+            divisions: allDivisions,
+            branches: allBranches
         });
     } catch (err) {
         res.status(500).json({ message: err.message });

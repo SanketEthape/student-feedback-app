@@ -7,6 +7,7 @@ export default function StudentRegister() {
   const [form, setForm] = useState({
     name: '',
     email: '',
+    branch: 'Computer Engineering',
     studentClass: 'TY',
     division: 'A',
     rollNo: '',
@@ -22,8 +23,8 @@ export default function StudentRegister() {
     e.preventDefault();
     setErr('');
 
-    if (!form.name.trim() || !form.email.trim() || !form.studentClass || !form.division || !form.rollNo.trim()) {
-      setErr('Please fill in all required fields (Name, Class, Division, Roll Number, Email).');
+    if (!form.name.trim() || !form.email.trim() || !form.branch || !form.studentClass || !form.division || !form.rollNo.trim()) {
+      setErr('Please fill in all required fields (Name, Branch, Class, Division, Roll Number, Email).');
       return;
     }
 
@@ -40,6 +41,7 @@ export default function StudentRegister() {
       const { data } = await studentApi.post('/student-auth/register', {
         name: form.name.trim(),
         email: form.email.trim(),
+        branch: form.branch.trim(),
         studentClass: form.studentClass.trim(),
         division: form.division.trim().toUpperCase(),
         rollNo: form.rollNo.trim(),
@@ -91,6 +93,29 @@ export default function StudentRegister() {
                 required
                 autoFocus
               />
+            </div>
+
+            {/* Branch / Department */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 6 }}>
+                Branch / Department *
+              </label>
+              <select
+                id="student-reg-branch"
+                name="branch"
+                value={form.branch}
+                onChange={handle}
+                required
+                style={{ background: '#fff', fontSize: 14 }}
+              >
+                <option value="Computer Engineering">Computer Engineering</option>
+                <option value="Information Technology">Information Technology</option>
+                <option value="AI & Data Science">AI &amp; Data Science</option>
+                <option value="Electronics & Telecommunication">Electronics &amp; Telecommunication</option>
+                <option value="Mechanical Engineering">Mechanical Engineering</option>
+                <option value="Civil Engineering">Civil Engineering</option>
+                <option value="Electrical Engineering">Electrical Engineering</option>
+              </select>
             </div>
 
             {/* Class, Division & Roll No */}
