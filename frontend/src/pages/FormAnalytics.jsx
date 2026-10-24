@@ -14,13 +14,36 @@ export default function FormAnalytics() {
     const [approvingIdx, setApprovingIdx] = useState(null);
     const [actionMsg, setActionMsg] = useState('');
 
+    // Manual Question Edit State
+    const [editingIdx, setEditingIdx] = useState(null);
+    const [editFormData, setEditFormData] = useState(null);
+    const [savingEdit, setSavingEdit] = useState(false);
+
+    // Topic Video Links State
+    const [videoLinks, setVideoLinks] = useState([]);
+    const [savingVideos, setSavingVideos] = useState(false);
+
     useEffect(() => {
         Promise.all([
             api.get(`/forms/${id}`),
             api.get(`/analytics/form/${id}`),
             api.get(`/responses/form/${id}`)
         ]).then(([f, a, r]) => {
-            setForm(f.data); setAnalytics(a.data); setResponses(r.data);
+            setForm(f.data);
+            setAnalytics(a.data);
+            setResponses(r.data);
+
+            // Initialize topic video links from form.topicResources
+            const resources = f.data.topicResources || [];
+            // Merge with any derived topics present in questions if not yet saved
+            const qTopics = [...new Set(f.data.questions.map(q => q.topic?.trim()).filter(Boolean))];
+            const merged = [...resources];
+            qTopics.forEach(qt => {
+                if (!merged.some(m => m.topic.toLowerCase() === qt.toLowerCase())) {
+                    merged.push({ topic: qt, videoUrl: '', title: '' });
+                }
+            });
+            setVideoLinks(merged);
         }).finally(() => setLoading(false));
     }, [id]);
 
@@ -37,7 +60,7 @@ export default function FormAnalytics() {
             setForm(data);
             const approved = data.questions[qIndex].isApproved;
             setActionMsg(approved ? '✅ Question approved!' : '↩️ Approval removed.');
-        } catch (e) {
+        } catch {
             setActionMsg('❌ Failed to update approval.');
         } finally {
             setApprovingIdx(null);
@@ -60,6 +83,70 @@ export default function FormAnalytics() {
         }
     };
 
+    // Start manual editing of a question
+    const startManualEdit = (idx) => {
+        const q = form.questions[idx];
+        setEditingIdx(idx);
+        setEditFormData({
+            question: q.question || '',
+            topic: q.topic || '',
+            type: q.type || 'mcq',
+            options: q.options ? [...q.options] : ['', '', '', ''],
+            correctOption: q.correctOption || '',
+            explanation: q.explanation || '',
+            expectedAnswer: q.expectedAnswer || '',
+            isApproved: q.isApproved || false
+        });
+    };
+
+    const cancelManualEdit = () => {
+        setEditingIdx(null);
+        setEditFormData(null);
+    };
+
+    const saveManualEdit = async (idx) => {
+        if (!editFormData.question.trim()) {
+            alert('Question text cannot be empty');
+            return;
+        }
+        if (editFormData.type === 'mcq' && !editFormData.correctOption) {
+            alert('Please select or specify the correct option for this MCQ');
+            return;
+        }
+
+        setSavingEdit(true);
+        try {
+            const { data } = await api.put(`/forms/${id}/questions/${idx}`, editFormData);
+            setForm(data);
+            setEditingIdx(null);
+            setEditFormData(null);
+            setActionMsg('✅ Question updated successfully!');
+        } catch (e) {
+            setActionMsg('❌ ' + (e.response?.data?.message || 'Failed to update question'));
+        } finally {
+            setSavingEdit(false);
+            setTimeout(() => setActionMsg(''), 3500);
+        }
+    };
+
+    // Save topic video links
+    const saveVideoLinks = async () => {
+        setSavingVideos(true);
+        try {
+            const { data } = await api.patch(`/forms/${id}/topics/videos`, { topicResources: videoLinks });
+            setForm(data);
+            // Refresh analytics topic video references
+            const anRes = await api.get(`/analytics/form/${id}`);
+            setAnalytics(anRes.data);
+            setActionMsg('🎥 Topic recommended video links saved successfully!');
+        } catch (e) {
+            setActionMsg('❌ ' + (e.response?.data?.message || 'Failed to save video links'));
+        } finally {
+            setSavingVideos(false);
+            setTimeout(() => setActionMsg(''), 3500);
+        }
+    };
+
     if (loading) return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--muted)', padding: 40 }}>
             <div style={{ width: 20, height: 20, border: '2px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
@@ -73,7 +160,7 @@ export default function FormAnalytics() {
     const allApproved = approvedCount === totalQuestions;
 
     const tabStyle = (t) => ({
-        padding: '9px 20px', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 500,
+        padding: '9px 18px', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 500,
         background: tab === t ? 'var(--accent)' : 'transparent',
         color: tab === t ? '#fff' : 'var(--muted)',
         border: tab === t ? 'none' : '1px solid transparent',
@@ -126,22 +213,35 @@ export default function FormAnalytics() {
             )}
 
             {/* Tabs */}
-            <div style={{ display: 'flex', gap: 6, marginBottom: 24, background: '#f1f3fb', padding: 4, borderRadius: 10, width: 'fit-content' }}>
-                {['overview', 'responses', 'questions'].map(t => (
+            <div style={{ display: 'flex', gap: 6, marginBottom: 24, background: '#f1f3fb', padding: 4, borderRadius: 10, width: 'fit-content', flexWrap: 'wrap' }}>
+                {['overview', 'topics', 'questions', 'responses'].map(t => (
                     <button key={t} style={tabStyle(t)} onClick={() => setTab(t)}>
-                        {t === 'questions' ? `Questions (${approvedCount}/${totalQuestions} ✓)` : t.charAt(0).toUpperCase() + t.slice(1)}
+                        {t === 'questions'
+                            ? `Questions (${approvedCount}/${totalQuestions} ✓)`
+                            : t === 'topics'
+                                ? `📚 Topic Videos (${videoLinks.filter(v => v.videoUrl).length}/${videoLinks.length})`
+                                : t.charAt(0).toUpperCase() + t.slice(1)}
                     </button>
                 ))}
             </div>
 
-            {/* Overview Tab */}
+            {/* ========================================================= */}
+            {/* OVERVIEW TAB */}
+            {/* ========================================================= */}
             {tab === 'overview' && (
                 <div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 24 }}>
+                    {/* Top Overview Cards */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 20 }}>
                         {[
                             { label: 'Total Responses', value: analytics?.totalResponses || 0, color: 'var(--accent)' },
-                            { label: 'Topics Covered', value: analytics?.topicStats?.length || 0, color: 'var(--accent2)' },
-                            { label: 'Avg Understanding', value: analytics?.topicStats?.length > 0 ? Math.round(analytics.topicStats.reduce((a, b) => a + b.pct, 0) / analytics.topicStats.length) + '%' : 'N/A', color: 'var(--success)' }
+                            { label: 'Derived Topics', value: analytics?.topicStats?.length || videoLinks.length || 0, color: 'var(--accent2)' },
+                            {
+                                label: 'Class Avg Understanding',
+                                value: analytics?.topicStats?.length > 0
+                                    ? Math.round(analytics.topicStats.reduce((a, b) => a + (b.avgScore || b.pct), 0) / analytics.topicStats.length) + '%'
+                                    : 'N/A',
+                                color: 'var(--success)'
+                            }
                         ].map(stat => (
                             <div key={stat.label} className="card" style={{ textAlign: 'center' }}>
                                 <div style={{ fontSize: 28, fontWeight: 700, color: stat.color }}>{stat.value}</div>
@@ -150,16 +250,74 @@ export default function FormAnalytics() {
                         ))}
                     </div>
 
+                    {/* Standout Highlights: Most Understood & Lowest Understood */}
+                    {analytics?.topicStats?.length > 0 && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 24 }}>
+                            {/* Most Understood */}
+                            {analytics.mostUnderstoodTopic && (
+                                <div className="card" style={{
+                                    borderLeft: '5px solid #10b981',
+                                    background: 'linear-gradient(to right, rgba(16,185,129,0.05), transparent)'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                            🏆 Most Understood Topic
+                                        </span>
+                                        <span style={{
+                                            background: '#10b981', color: '#fff', padding: '2px 10px',
+                                            borderRadius: 12, fontSize: 12, fontWeight: 700
+                                        }}>
+                                            {analytics.mostUnderstoodTopic.avgScore || analytics.mostUnderstoodTopic.pct}% Avg
+                                        </span>
+                                    </div>
+                                    <h3 style={{ fontSize: 18, marginBottom: 4, color: 'var(--text)' }}>
+                                        {analytics.mostUnderstoodTopic.topic}
+                                    </h3>
+                                    <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
+                                        Class demonstrated highest mastery in this concept.
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Lowest Understood */}
+                            {analytics.lowestUnderstoodTopic && (
+                                <div className="card" style={{
+                                    borderLeft: '5px solid #ef4444',
+                                    background: 'linear-gradient(to right, rgba(239,68,68,0.05), transparent)'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                            ⚠️ Lowest Understood Topic (Priority)
+                                        </span>
+                                        <span style={{
+                                            background: '#ef4444', color: '#fff', padding: '2px 10px',
+                                            borderRadius: 12, fontSize: 12, fontWeight: 700
+                                        }}>
+                                            {analytics.lowestUnderstoodTopic.avgScore || analytics.lowestUnderstoodTopic.pct}% Avg
+                                        </span>
+                                    </div>
+                                    <h3 style={{ fontSize: 18, marginBottom: 4, color: 'var(--text)' }}>
+                                        {analytics.lowestUnderstoodTopic.topic}
+                                    </h3>
+                                    <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
+                                        Requires immediate classroom reteaching and targeted review.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Chart */}
                     {analytics?.topicStats?.length > 0 && (
                         <div className="card" style={{ marginBottom: 24 }}>
-                            <h3 style={{ marginBottom: 20, fontSize: 18 }}>Topic-wise Understanding</h3>
+                            <h3 style={{ marginBottom: 20, fontSize: 18 }}>Topic-wise Understanding Level</h3>
                             <ResponsiveContainer width="100%" height={280}>
                                 <BarChart data={analytics.topicStats} margin={{ left: -10 }}>
                                     <XAxis dataKey="topic" tick={{ fill: 'var(--muted)', fontSize: 12 }} />
                                     <YAxis tick={{ fill: 'var(--muted)', fontSize: 12 }} domain={[0, 100]} />
                                     <Tooltip
                                         contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 16px rgba(30,34,53,0.1)' }}
-                                        formatter={(v) => [v + '%', 'Correct']}
+                                        formatter={(v) => [`${v}%`, 'Understanding']}
                                     />
                                     <Bar dataKey="pct" radius={[6, 6, 0, 0]}>
                                         {analytics.topicStats.map((entry, i) => (
@@ -171,47 +329,241 @@ export default function FormAnalytics() {
                         </div>
                     )}
 
-                    {analytics?.aiInsight && (
-                        <div className="card" style={{ borderLeft: '3px solid var(--accent)' }}>
-                            <h3 style={{ marginBottom: 12, fontSize: 18 }}>🤖 AI Teaching Insight</h3>
-                            <p style={{ color: 'var(--text)', lineHeight: 1.7, fontSize: 14 }}>{analytics.aiInsight}</p>
+                    {/* Class-wide Summary */}
+                    {(analytics?.classSummary || analytics?.aiInsight) && (
+                        <div className="card" style={{ borderLeft: '4px solid var(--accent)', marginBottom: 24 }}>
+                            <h3 style={{ marginBottom: 10, fontSize: 17, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                🤖 Class-Wide Assessment Summary
+                            </h3>
+                            <p style={{ color: 'var(--text)', lineHeight: 1.7, fontSize: 14, margin: 0 }}>
+                                {analytics.classSummary || analytics.aiInsight}
+                            </p>
                         </div>
                     )}
-                </div>
-            )}
 
-            {/* Responses Tab */}
-            {tab === 'responses' && (
-                <div style={{ display: 'grid', gap: 16 }}>
-                    {responses.length === 0 ? <p style={{ color: 'var(--muted)' }}>No responses yet.</p> :
-                        responses.map(r => (
-                            <div key={r._id} className="card">
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-                                    <div>
-                                        <strong>{r.studentName}</strong>
-                                        {r.rollNo && <span style={{ color: 'var(--muted)', fontSize: 13, marginLeft: 8 }}>Roll: {r.rollNo}</span>}
-                                    </div>
-                                    <span style={{ color: 'var(--muted)', fontSize: 13 }}>{new Date(r.submittedAt).toLocaleString()}</span>
-                                </div>
-                                <div style={{ display: 'flex', gap: 8, marginBottom: r.recommendation ? 12 : 0, flexWrap: 'wrap' }}>
-                                    {r.answers.map((a, i) => (
-                                        <span key={i} className={`tag ${a.isCorrect === true ? 'tag-active' : a.isCorrect === false ? 'tag-inactive' : ''}`}
-                                            style={{ background: a.isCorrect === null ? 'rgba(79,110,247,0.1)' : undefined, color: a.isCorrect === null ? 'var(--accent)' : undefined }}>
-                                            {a.topic}
-                                        </span>
-                                    ))}
-                                </div>
-                                {r.recommendation && (
-                                    <div style={{ background: 'rgba(79,110,247,0.06)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--text)', lineHeight: 1.6, border: '1px solid rgba(79,110,247,0.12)' }}>
-                                        <strong>💡 Recommendation:</strong> {r.recommendation}
-                                    </div>
-                                )}
+                    {/* ========================================================= */}
+                    {/* TOPIC-BY-TOPIC DIAGNOSTICS & TEACHING SOLUTIONS */}
+                    {/* ========================================================= */}
+                    <div style={{ marginBottom: 24 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                            <div>
+                                <h3 style={{ fontSize: 19, margin: '0 0 4px' }}>🎯 Detailed Topic Diagnostic Insights & Solutions</h3>
+                                <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
+                                    Per-topic comprehension level, diagnostic breakdown, and recommended solutions to bridge knowledge gaps
+                                </p>
                             </div>
-                        ))}
+                        </div>
+
+                        {(!analytics?.topicStats || analytics.topicStats.length === 0) ? (
+                            <div className="card" style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>
+                                <p>No student submissions yet. Topic diagnostics and solutions will appear here once students submit responses.</p>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'grid', gap: 16 }}>
+                                {analytics.topicStats.map((stat, i) => {
+                                    const insightItem = (analytics.topicInsights || []).find(
+                                        ti => ti.topic && ti.topic.trim().toLowerCase() === stat.topic.trim().toLowerCase()
+                                    ) || {};
+
+                                    const isLowest = analytics.lowestUnderstoodTopic?.topic === stat.topic;
+                                    const isMost = analytics.mostUnderstoodTopic?.topic === stat.topic;
+                                    const score = stat.avgScore || stat.pct;
+                                    const badgeColor = score >= 75 ? '#10b981' : score >= 50 ? '#f59e0b' : '#ef4444';
+                                    const badgeBg = score >= 75 ? 'rgba(16,185,129,0.1)' : score >= 50 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)';
+
+                                    return (
+                                        <div key={i} className="card" style={{
+                                            borderLeft: `5px solid ${badgeColor}`,
+                                            position: 'relative'
+                                        }}>
+                                            {/* Header */}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                                                <div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                                        <h4 style={{ margin: 0, fontSize: 17, color: 'var(--text)' }}>{stat.topic}</h4>
+                                                        {isLowest && (
+                                                            <span style={{ background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4 }}>
+                                                                LOWEST UNDERSTOOD
+                                                            </span>
+                                                        )}
+                                                        {isMost && (
+                                                            <span style={{ background: '#10b981', color: '#fff', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4 }}>
+                                                                MOST UNDERSTOOD
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--muted)' }}>
+                                                        {stat.totalAnswers} student answers recorded
+                                                        {stat.mcqCount > 0 && ` (${stat.correct} correct, ${stat.wrong} wrong)`}
+                                                    </p>
+                                                </div>
+
+                                                <div style={{ textAlign: 'right' }}>
+                                                    <span style={{
+                                                        background: badgeBg, color: badgeColor,
+                                                        border: `1px solid ${badgeColor}40`,
+                                                        borderRadius: 8, padding: '4px 12px',
+                                                        fontSize: 13, fontWeight: 700
+                                                    }}>
+                                                        {score}% · {stat.level || (score >= 75 ? 'Good Understanding' : score >= 50 ? 'Average Understanding' : 'Needs Improvement')}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Insight & Solution Grid */}
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14, marginTop: 12 }}>
+                                                {/* Diagnostic Insight */}
+                                                <div style={{
+                                                    background: '#f8fafc', border: '1px solid var(--border)',
+                                                    borderRadius: 8, padding: '12px 14px'
+                                                }}>
+                                                    <strong style={{ fontSize: 13, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                                        🧐 Current Understanding Diagnosis
+                                                    </strong>
+                                                    <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6, margin: 0 }}>
+                                                        {insightItem.insight || `Students averaged ${score}% in this topic.`}
+                                                    </p>
+                                                </div>
+
+                                                {/* Actionable Teaching Solution */}
+                                                <div style={{
+                                                    background: 'rgba(79,110,247,0.04)', border: '1px solid rgba(79,110,247,0.15)',
+                                                    borderRadius: 8, padding: '12px 14px'
+                                                }}>
+                                                    <strong style={{ fontSize: 13, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                                        💡 Actionable Solution to Improve Understanding
+                                                    </strong>
+                                                    <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6, margin: 0 }}>
+                                                        {insightItem.solution || `Review fundamental concepts of ${stat.topic} and practice application problems in class.`}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* Attached Recommended Video indicator */}
+                                            <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                                                <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                                                    {stat.videoUrl ? (
+                                                        <span style={{ color: '#059669', fontWeight: 600 }}>
+                                                            🎥 Curated Video Attached: <a href={stat.videoUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>{stat.videoUrl}</a>
+                                                        </span>
+                                                    ) : (
+                                                        <span>🎥 No faculty video link attached yet.</span>
+                                                    )}
+                                                </span>
+                                                <button
+                                                    onClick={() => setTab('topics')}
+                                                    style={{
+                                                        background: 'none', border: 'none', color: 'var(--accent)',
+                                                        fontSize: 12, cursor: 'pointer', textDecoration: 'underline', padding: 0
+                                                    }}
+                                                >
+                                                    {stat.videoUrl ? 'Edit Video Link →' : '+ Add Recommended Video Link →'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
-            {/* Questions Tab — with Approve + Regenerate */}
+            {/* ========================================================= */}
+            {/* TOPIC VIDEOS & RESOURCES TAB */}
+            {/* ========================================================= */}
+            {tab === 'topics' && (
+                <div style={{ display: 'grid', gap: 20 }}>
+                    <div className="card" style={{ borderLeft: '4px solid var(--accent)' }}>
+                        <h3 style={{ margin: '0 0 6px', fontSize: 18 }}>📺 Recommended Video Links for Derived Syllabus Topics</h3>
+                        <p style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.6, margin: 0 }}>
+                            Add your recommended educational video link (YouTube, Vimeo, Google Drive, or college LMS video) for each derived topic.
+                            When students complete their assessment and have low or average understanding on a topic, your curated video link will be directly recommended to them!
+                        </p>
+                    </div>
+
+                    <div className="card">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                            <h4 style={{ margin: 0, fontSize: 16 }}>Derived Syllabus Topics ({videoLinks.length})</h4>
+                            <button
+                                className="btn btn-primary"
+                                onClick={saveVideoLinks}
+                                disabled={savingVideos}
+                                style={{ padding: '8px 20px', fontSize: 14 }}
+                            >
+                                {savingVideos ? 'Saving...' : '💾 Save All Video Links'}
+                            </button>
+                        </div>
+
+                        {videoLinks.length === 0 ? (
+                            <p style={{ color: 'var(--muted)', textAlign: 'center', padding: 20 }}>No topics found for this form.</p>
+                        ) : (
+                            <div style={{ display: 'grid', gap: 16 }}>
+                                {videoLinks.map((item, idx) => (
+                                    <div key={idx} style={{
+                                        border: '1px solid var(--border)', borderRadius: 10,
+                                        padding: '14px 18px', background: '#fafbfc'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                <span style={{
+                                                    background: 'rgba(79,110,247,0.1)', color: 'var(--accent)',
+                                                    padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700
+                                                }}>
+                                                    Topic #{idx + 1}
+                                                </span>
+                                                <strong style={{ fontSize: 15, color: 'var(--text)' }}>{item.topic}</strong>
+                                            </div>
+                                            {item.videoUrl && (
+                                                <a
+                                                    href={item.videoUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{
+                                                        fontSize: 12, color: '#059669', background: 'rgba(16,185,129,0.1)',
+                                                        padding: '3px 8px', borderRadius: 4, textDecoration: 'none', fontWeight: 600
+                                                    }}
+                                                >
+                                                    ▶️ Test Link
+                                                </a>
+                                            )}
+                                        </div>
+
+                                        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                                            <input
+                                                type="url"
+                                                placeholder="https://www.youtube.com/watch?v=... or any video link"
+                                                value={item.videoUrl || ''}
+                                                onChange={e => {
+                                                    const updated = [...videoLinks];
+                                                    updated[idx] = { ...updated[idx], videoUrl: e.target.value };
+                                                    setVideoLinks(updated);
+                                                }}
+                                                style={{ flex: 1, padding: '9px 12px', fontSize: 13 }}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div style={{ marginTop: 20, textAlign: 'right' }}>
+                            <button
+                                className="btn btn-primary"
+                                onClick={saveVideoLinks}
+                                disabled={savingVideos}
+                                style={{ padding: '10px 24px', fontSize: 14 }}
+                            >
+                                {savingVideos ? 'Saving...' : '💾 Save All Video Links'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* QUESTIONS TAB — With Manual Reframe & AI Reframe */}
+            {/* ========================================================= */}
             {tab === 'questions' && (
                 <div style={{ display: 'grid', gap: 16 }}>
                     {/* Summary bar */}
@@ -245,12 +597,23 @@ export default function FormAnalytics() {
 
                                 {/* Action buttons */}
                                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                                    {/* Regenerate button */}
+                                    {/* Manual Edit Button */}
+                                    <button
+                                        className="btn btn-secondary"
+                                        style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
+                                        onClick={() => editingIdx === i ? cancelManualEdit() : startManualEdit(i)}
+                                        disabled={regeneratingIdx === i || savingEdit}
+                                        title="Manually edit / reframe question"
+                                    >
+                                        {editingIdx === i ? '✕ Cancel Edit' : '✏️ Manual Reframe'}
+                                    </button>
+
+                                    {/* AI Regenerate button */}
                                     <button
                                         className="btn btn-warning"
                                         style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
                                         onClick={() => handleRegenerate(i)}
-                                        disabled={regeneratingIdx === i || approvingIdx === i}
+                                        disabled={regeneratingIdx === i || approvingIdx === i || editingIdx === i}
                                         title="Regenerate this question using AI"
                                     >
                                         {regeneratingIdx === i ? (
@@ -258,7 +621,7 @@ export default function FormAnalytics() {
                                                 <span style={{ width: 12, height: 12, border: '2px solid #b45309', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
                                                 Regenerating...
                                             </>
-                                        ) : '🔄 Reframe'}
+                                        ) : '🔄 AI Reframe'}
                                     </button>
 
                                     {/* Approve button */}
@@ -266,7 +629,7 @@ export default function FormAnalytics() {
                                         className={`btn ${q.isApproved ? 'btn-success' : 'btn-secondary'}`}
                                         style={{ fontSize: 12, padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 5 }}
                                         onClick={() => handleApprove(i)}
-                                        disabled={approvingIdx === i || regeneratingIdx === i}
+                                        disabled={approvingIdx === i || regeneratingIdx === i || editingIdx === i}
                                         title={q.isApproved ? 'Revoke approval' : 'Approve this question'}
                                     >
                                         {approvingIdx === i ? (
@@ -279,25 +642,189 @@ export default function FormAnalytics() {
                                 </div>
                             </div>
 
-                            {/* Question text */}
-                            <p style={{ fontSize: 14, marginBottom: q.options?.length ? 12 : 0, lineHeight: 1.6, color: 'var(--text)' }}>{q.question}</p>
+                            {/* INLINE MANUAL EDIT MODE */}
+                            {editingIdx === i ? (
+                                <div style={{ background: '#f8fafc', border: '1px solid var(--accent)', borderRadius: 8, padding: 16, marginTop: 10 }}>
+                                    <h4 style={{ margin: '0 0 12px', fontSize: 14, color: 'var(--accent)' }}>✏️ Edit Question #{i + 1}</h4>
 
-                            {/* Options */}
-                            {q.options?.length > 0 && (
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                                    {q.options.map((opt, j) => (
-                                        <span key={j} style={{
-                                            padding: '5px 14px', borderRadius: 6, fontSize: 13,
-                                            background: opt === q.correctOption ? 'rgba(16,185,129,0.1)' : '#f9fafb',
-                                            color: opt === q.correctOption ? '#059669' : 'var(--muted)',
-                                            border: `1px solid ${opt === q.correctOption ? 'rgba(16,185,129,0.35)' : 'var(--border)'}`,
-                                            fontWeight: opt === q.correctOption ? 600 : 400
-                                        }}>{opt === q.correctOption ? '✓ ' : ''}{opt}</span>
-                                    ))}
+                                    {/* Topic */}
+                                    <div style={{ marginBottom: 12 }}>
+                                        <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Topic</label>
+                                        <input
+                                            value={editFormData.topic}
+                                            onChange={e => setEditFormData({ ...editFormData, topic: e.target.value })}
+                                            placeholder="Topic name"
+                                            style={{ width: '100%', padding: '8px', fontSize: 13 }}
+                                        />
+                                    </div>
+
+                                    {/* Question Text */}
+                                    <div style={{ marginBottom: 12 }}>
+                                        <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Question</label>
+                                        <textarea
+                                            value={editFormData.question}
+                                            onChange={e => setEditFormData({ ...editFormData, question: e.target.value })}
+                                            rows={3}
+                                            style={{ width: '100%', padding: '8px', fontSize: 13, resize: 'vertical' }}
+                                        />
+                                    </div>
+
+                                    {/* MCQ Options */}
+                                    {editFormData.type === 'mcq' && (
+                                        <div style={{ marginBottom: 12 }}>
+                                            <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
+                                                MCQ Options (Select the radio button for the correct option)
+                                            </label>
+                                            <div style={{ display: 'grid', gap: 8 }}>
+                                                {editFormData.options.map((opt, optIdx) => (
+                                                    <div key={optIdx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                        <input
+                                                            type="radio"
+                                                            name={`correctOpt-${i}`}
+                                                            checked={editFormData.correctOption === opt && opt !== ''}
+                                                            onChange={() => setEditFormData({ ...editFormData, correctOption: opt })}
+                                                            title="Mark as correct answer"
+                                                        />
+                                                        <input
+                                                            value={opt}
+                                                            onChange={e => {
+                                                                const newOpts = [...editFormData.options];
+                                                                const oldVal = newOpts[optIdx];
+                                                                newOpts[optIdx] = e.target.value;
+                                                                const newCorrect = editFormData.correctOption === oldVal ? e.target.value : editFormData.correctOption;
+                                                                setEditFormData({ ...editFormData, options: newOpts, correctOption: newCorrect });
+                                                            }}
+                                                            placeholder={`Option ${optIdx + 1}`}
+                                                            style={{ flex: 1, padding: '7px 10px', fontSize: 13 }}
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Descriptive Expected Answer */}
+                                    {editFormData.type === 'text' && (
+                                        <div style={{ marginBottom: 12 }}>
+                                            <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                                                Expected Answer / Important Concepts to Check
+                                            </label>
+                                            <textarea
+                                                value={editFormData.expectedAnswer}
+                                                onChange={e => setEditFormData({ ...editFormData, expectedAnswer: e.target.value })}
+                                                rows={3}
+                                                style={{ width: '100%', padding: '8px', fontSize: 13, resize: 'vertical' }}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Explanation */}
+                                    <div style={{ marginBottom: 16 }}>
+                                        <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                                            Explanation / Model Solution
+                                        </label>
+                                        <textarea
+                                            value={editFormData.explanation}
+                                            onChange={e => setEditFormData({ ...editFormData, explanation: e.target.value })}
+                                            rows={2}
+                                            style={{ width: '100%', padding: '8px', fontSize: 13, resize: 'vertical' }}
+                                        />
+                                    </div>
+
+                                    {/* Edit Action Buttons */}
+                                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                        <button
+                                            className="btn btn-secondary"
+                                            onClick={cancelManualEdit}
+                                            disabled={savingEdit}
+                                            style={{ fontSize: 13, padding: '6px 14px' }}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            className="btn btn-primary"
+                                            onClick={() => saveManualEdit(i)}
+                                            disabled={savingEdit}
+                                            style={{ fontSize: 13, padding: '6px 18px' }}
+                                        >
+                                            {savingEdit ? 'Saving...' : '💾 Save Question'}
+                                        </button>
+                                    </div>
                                 </div>
+                            ) : (
+                                <>
+                                    {/* Normal View */}
+                                    <p style={{ fontSize: 14, marginBottom: q.options?.length ? 12 : 0, lineHeight: 1.6, color: 'var(--text)' }}>
+                                        {q.question}
+                                    </p>
+
+                                    {/* MCQ Options Display */}
+                                    {q.options?.length > 0 && (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                                            {q.options.map((opt, j) => (
+                                                <span key={j} style={{
+                                                    padding: '5px 14px', borderRadius: 6, fontSize: 13,
+                                                    background: opt === q.correctOption ? 'rgba(16,185,129,0.1)' : '#f9fafb',
+                                                    color: opt === q.correctOption ? '#059669' : 'var(--muted)',
+                                                    border: `1px solid ${opt === q.correctOption ? 'rgba(16,185,129,0.35)' : 'var(--border)'}`,
+                                                    fontWeight: opt === q.correctOption ? 600 : 400
+                                                }}>
+                                                    {opt === q.correctOption ? '✓ ' : ''}{opt}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Text Question Expected Answer Preview */}
+                                    {q.type === 'text' && q.expectedAnswer && (
+                                        <div style={{ fontSize: 12, color: 'var(--muted)', background: '#f8fafc', padding: '6px 10px', borderRadius: 6, marginTop: 8 }}>
+                                            <strong>Expected Answer:</strong> {q.expectedAnswer}
+                                        </div>
+                                    )}
+
+                                    {/* Explanation Preview */}
+                                    {q.explanation && (
+                                        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+                                            💡 <em>{q.explanation}</em>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* RESPONSES TAB */}
+            {/* ========================================================= */}
+            {tab === 'responses' && (
+                <div style={{ display: 'grid', gap: 16 }}>
+                    {responses.length === 0 ? <p style={{ color: 'var(--muted)' }}>No responses yet.</p> :
+                        responses.map(r => (
+                            <div key={r._id} className="card">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                                    <div>
+                                        <strong>{r.studentName}</strong>
+                                        {r.rollNo && <span style={{ color: 'var(--muted)', fontSize: 13, marginLeft: 8 }}>Roll: {r.rollNo}</span>}
+                                    </div>
+                                    <span style={{ color: 'var(--muted)', fontSize: 13 }}>{new Date(r.submittedAt).toLocaleString()}</span>
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, marginBottom: r.recommendation ? 12 : 0, flexWrap: 'wrap' }}>
+                                    {r.answers.map((a, i) => (
+                                        <span key={i} className={`tag ${a.isCorrect === true ? 'tag-active' : a.isCorrect === false ? 'tag-inactive' : ''}`}
+                                            style={{ background: a.isCorrect === null ? 'rgba(79,110,247,0.1)' : undefined, color: a.isCorrect === null ? 'var(--accent)' : undefined }}>
+                                            {a.topic}
+                                        </span>
+                                    ))}
+                                </div>
+                                {r.recommendation && (
+                                    <div style={{ background: 'rgba(79,110,247,0.06)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--text)', lineHeight: 1.6, border: '1px solid rgba(79,110,247,0.12)' }}>
+                                        <strong>💡 Recommendation:</strong> {r.recommendation}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
                 </div>
             )}
         </div>

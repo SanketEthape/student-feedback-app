@@ -166,6 +166,63 @@ const ResultModal = ({ response, onClose }) => {
             </div>
           </>
         )}
+
+        {/* Recommended Learning Resources & Videos */}
+        {(() => {
+          const weakTopics = [...new Set(
+            response.answers
+              ?.filter(a => a.isCorrect === false || a.level === 'Low' || a.level === 'Average')
+              ?.map(a => a.topic?.trim())
+              ?.filter(Boolean)
+          )];
+          if (weakTopics.length === 0) return null;
+
+          return (
+            <div style={{ marginTop: 24 }}>
+              <h3 style={{ marginBottom: 12 }}>📚 Recommended Learning Resources</h3>
+              <div style={{ display: 'grid', gap: 12 }}>
+                {weakTopics.map((topic, i) => {
+                  const matchedResource = (form.topicResources || []).find(
+                    tr => tr.topic && tr.topic.trim().toLowerCase() === topic.toLowerCase()
+                  );
+                  const videoUrl = matchedResource?.videoUrl?.trim();
+
+                  return (
+                    <div key={i} className="card" style={{ borderLeft: '4px solid var(--accent)', padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                        <span style={{ fontWeight: 700, fontSize: 14 }}>📖 {topic}</span>
+                        {videoUrl ? (
+                          <a
+                            href={videoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-primary"
+                            style={{
+                              fontSize: 12, padding: '5px 12px',
+                              textDecoration: 'none', background: '#059669', borderColor: '#059669'
+                            }}
+                          >
+                            🎥 Watch Faculty Recommended Video
+                          </a>
+                        ) : (
+                          <a
+                            href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${topic} complete tutorial for beginners`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-secondary"
+                            style={{ fontSize: 12, padding: '5px 12px', textDecoration: 'none' }}
+                          >
+                            ▶️ Search Tutorials
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

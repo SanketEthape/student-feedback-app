@@ -468,6 +468,11 @@ Use exactly this format:
                     a.level === 'Average') &&
                 a.topic
             ) {
+                // Check if faculty provided a recommended video link for this topic
+                const matchedTopicResource = (form.topicResources || []).find(
+                    tr => tr.topic && tr.topic.trim().toLowerCase() === a.topic.trim().toLowerCase()
+                );
+                const facultyVideoUrl = matchedTopicResource?.videoUrl?.trim() || '';
 
                 learningResources.push({
                     topic: a.topic,
@@ -479,6 +484,8 @@ Use exactly this format:
 
                     importantPoints:
                         a.importantPoints || [],
+
+                    videoUrl: facultyVideoUrl,
 
                     youtubeSearch:
                         a.youtubeSearch ||
@@ -628,7 +635,7 @@ router.get('/my-responses', studentAuth, async (req, res) => {
             .sort({ submittedAt: -1 })
             .populate({
                 path: 'form',
-                select: 'title subject',
+                select: 'title subject topicResources',
                 populate: {
                     path: 'faculty',
                     select: 'name department'
@@ -653,7 +660,7 @@ router.get('/my-responses/:id', studentAuth, async (req, res) => {
             student: req.student.id
         }).populate({
             path: 'form',
-            select: 'title subject',
+            select: 'title subject topicResources',
             populate: {
                 path: 'faculty',
                 select: 'name department'

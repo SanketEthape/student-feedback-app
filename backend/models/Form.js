@@ -79,6 +79,25 @@ const FormSchema = new mongoose.Schema({
         default: []
     },
 
+    // Recommended video links and resources corresponding to derived topics
+    topicResources: {
+        type: [{
+            topic: {
+                type: String,
+                required: true
+            },
+            videoUrl: {
+                type: String,
+                default: ''
+            },
+            title: {
+                type: String,
+                default: ''
+            }
+        }],
+        default: []
+    },
+
     uniqueLink: {
         type: String,
         default: uuidv4,

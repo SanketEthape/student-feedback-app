@@ -768,25 +768,61 @@ export default function StudentForm() {
                               </div>
                             )}
 
-                          {/* YOUTUBE */}
+                          {/* RECOMMENDED VIDEO OR YOUTUBE */}
 
-                          {resource.youtubeSearch && (
-                            <a
-                              href={`https://www.youtube.com/results?search_query=${encodeURIComponent(
-                                resource.youtubeSearch
-                              )}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="btn btn-primary"
-                              style={{
-                                display:
-                                  "inline-block",
-                                textDecoration:
-                                  "none",
-                              }}
-                            >
-                              ▶️ Watch Recommended Videos
-                            </a>
+                          {resource.videoUrl ? (
+                            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                              <a
+                                href={resource.videoUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn btn-primary"
+                                style={{
+                                  display: "inline-block",
+                                  textDecoration: "none",
+                                  background: "#059669",
+                                  borderColor: "#059669"
+                                }}
+                              >
+                                🎥 Watch Faculty Recommended Video
+                              </a>
+                              {resource.youtubeSearch && (
+                                <a
+                                  href={`https://www.youtube.com/results?search_query=${encodeURIComponent(
+                                    resource.youtubeSearch
+                                  )}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="btn btn-secondary"
+                                  style={{
+                                    display: "inline-block",
+                                    textDecoration: "none",
+                                    fontSize: 13
+                                  }}
+                                >
+                                  🔍 More YouTube Tutorials
+                                </a>
+                              )}
+                            </div>
+                          ) : (
+                            resource.youtubeSearch && (
+                              <a
+                                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(
+                                  resource.youtubeSearch
+                                )}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn btn-primary"
+                                style={{
+                                  display:
+                                    "inline-block",
+                                  textDecoration:
+                                    "none",
+                                }}
+                              >
+                                ▶️ Watch Recommended Videos
+                              </a>
+                            )
                           )}
                         </div>
                       )

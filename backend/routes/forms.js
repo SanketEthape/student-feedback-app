@@ -13,6 +13,22 @@ router.post('/generate', auth, async (req, res) => {
     try {
         const { title, subject, syllabus } = req.body;
 
+        // Parse question type counts
+        const reqMcq = req.body.mcqCount !== undefined ? parseInt(req.body.mcqCount, 10) : 6;
+        const reqText = req.body.textCount !== undefined ? parseInt(req.body.textCount, 10) : 2;
+        const reqScale = req.body.scaleCount !== undefined ? parseInt(req.body.scaleCount, 10) : 2;
+
+        const numMcq = isNaN(reqMcq) || reqMcq < 0 ? 6 : reqMcq;
+        const numText = isNaN(reqText) || reqText < 0 ? 2 : reqText;
+        const numScale = isNaN(reqScale) || reqScale < 0 ? 2 : reqScale;
+        const totalExpected = numMcq + numText + numScale;
+
+        if (totalExpected === 0) {
+            return res.status(400).json({
+                message: 'At least 1 question must be generated.'
+            });
+        }
+
         // Validate input
         if (!title || !subject || !syllabus) {
             return res.status(400).json({
@@ -51,7 +67,7 @@ router.post('/generate', auth, async (req, res) => {
         const prompt = `
 You are an expert educational assessment designer.
 
-Based on the syllabus provided below, generate EXACTLY 10 unique assessment questions.
+Based on the syllabus provided below, generate EXACTLY ${totalExpected} unique assessment questions.
 
 SYLLABUS:
 ${syllabus}
@@ -64,12 +80,8 @@ QUESTION DISTRIBUTION
 ==================================================
 
 Generate exactly:
-
-- 6 MCQ questions
-- 2 Scale questions
-- 2 Descriptive/Text questions
-
-Total = EXACTLY 10 questions.
+${numMcq > 0 ? `- ${numMcq} MCQ questions\n` : ''}${numScale > 0 ? `- ${numScale} Scale questions\n` : ''}${numText > 0 ? `- ${numText} Descriptive/Text questions\n` : ''}
+Total = EXACTLY ${totalExpected} questions.
 
 ==================================================
 GENERAL RULES
@@ -239,14 +251,9 @@ Do NOT return:
 - "Here is your JSON"
 - Any text before or after the JSON
 
-The JSON array must contain exactly 10 objects.
+The JSON array must contain exactly ${totalExpected} objects.
 
-The order should be:
-
-1-6 = MCQ
-7-8 = Scale
-9-10 = Text
-
+${numMcq > 0 ? `- First ${numMcq} object(s) = MCQ (type: "mcq")\n` : ''}${numScale > 0 ? `- Next ${numScale} object(s) = Scale (type: "scale")\n` : ''}${numText > 0 ? `- Next ${numText} object(s) = Text/Descriptive (type: "text")\n` : ''}
 Use this exact structure:
 
 [
@@ -317,24 +324,24 @@ Use this exact structure:
             });
         }
 
-        if (questions.length !== 10) {
+        if (questions.length !== totalExpected) {
             return res.status(500).json({
-                message: `Gemini generated ${questions.length} questions instead of 10. Please try again.`
+                message: `Gemini generated ${questions.length} questions instead of ${totalExpected}. Please try again.`
             });
         }
 
         // Count question types
-        const mcqCount = questions.filter(q => q.type === 'mcq').length;
-        const scaleCount = questions.filter(q => q.type === 'scale').length;
-        const textCount = questions.filter(q => q.type === 'text').length;
+        const mcqCountActual = questions.filter(q => q.type === 'mcq').length;
+        const scaleCountActual = questions.filter(q => q.type === 'scale').length;
+        const textCountActual = questions.filter(q => q.type === 'text').length;
 
         if (
-            mcqCount !== 6 ||
-            scaleCount !== 2 ||
-            textCount !== 2
+            mcqCountActual !== numMcq ||
+            scaleCountActual !== numScale ||
+            textCountActual !== numText
         ) {
             return res.status(500).json({
-                message: 'Generated question distribution is incorrect. Please try again.'
+                message: `Generated question distribution is incorrect. Expected: ${numMcq} MCQ, ${numScale} Scale, ${numText} Descriptive. Received: ${mcqCountActual} MCQ, ${scaleCountActual} Scale, ${textCountActual} Descriptive. Please try again.`
             });
         }
 
@@ -409,6 +416,22 @@ Use this exact structure:
         });
 
         // ==================================================
+        // Extract Unique Derived Topics & Initialize Topic Resources
+        // ==================================================
+
+        const uniqueTopics = [...new Set(
+            validatedQuestions
+                .map(q => q.topic ? q.topic.trim() : '')
+                .filter(Boolean)
+        )];
+
+        const topicResources = uniqueTopics.map(topic => ({
+            topic,
+            videoUrl: '',
+            title: ''
+        }));
+
+        // ==================================================
         // Create Form
         // ==================================================
 
@@ -417,7 +440,8 @@ Use this exact structure:
             title,
             subject,
             syllabus,
-            questions: validatedQuestions
+            questions: validatedQuestions,
+            topicResources
         });
 
         // Return created form
@@ -514,6 +538,14 @@ router.get('/:id', auth, async (req, res) => {
             return res.status(404).json({
                 message: 'Form not found'
             });
+        }
+
+        // Initialize topicResources if missing or if new topics exist
+        if (!form.topicResources || form.topicResources.length === 0) {
+            const uniqueTopics = [...new Set(form.questions.map(q => q.topic?.trim()).filter(Boolean))];
+            form.topicResources = uniqueTopics.map(topic => ({ topic, videoUrl: '', title: '' }));
+            form.markModified('topicResources');
+            await form.save();
         }
 
         res.json(form);
@@ -669,6 +701,85 @@ Return ONLY a single valid JSON object (NOT an array) with exactly these fields:
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: err.message });
+    }
+});
+
+// ======================================================
+// Manually reframe / edit a single question
+// ======================================================
+router.put('/:id/questions/:qIndex', auth, async (req, res) => {
+    try {
+        const form = await Form.findOne({ _id: req.params.id, faculty: req.faculty.id });
+        if (!form) return res.status(404).json({ message: 'Form not found' });
+        const idx = parseInt(req.params.qIndex, 10);
+        if (isNaN(idx) || idx < 0 || idx >= form.questions.length) {
+            return res.status(400).json({ message: 'Invalid question index' });
+        }
+
+        const { question, topic, options, correctOption, explanation, expectedAnswer, isApproved } = req.body;
+        if (!question || !question.trim()) {
+            return res.status(400).json({ message: 'Question text is required' });
+        }
+
+        const targetQ = form.questions[idx];
+        targetQ.question = question.trim();
+        if (topic !== undefined) targetQ.topic = topic.trim();
+        if (options !== undefined && Array.isArray(options)) {
+            targetQ.options = options.map(o => String(o).trim());
+        }
+        if (correctOption !== undefined) targetQ.correctOption = String(correctOption).trim();
+        if (explanation !== undefined) targetQ.explanation = String(explanation).trim();
+        if (expectedAnswer !== undefined) targetQ.expectedAnswer = String(expectedAnswer).trim();
+        if (isApproved !== undefined) targetQ.isApproved = !!isApproved;
+
+        // Ensure topic is represented in topicResources
+        if (targetQ.topic) {
+            const hasTopic = form.topicResources.some(
+                tr => tr.topic.trim().toLowerCase() === targetQ.topic.toLowerCase()
+            );
+            if (!hasTopic) {
+                form.topicResources.push({ topic: targetQ.topic, videoUrl: '', title: '' });
+                form.markModified('topicResources');
+            }
+        }
+
+        form.markModified('questions');
+        await form.save();
+        res.json(form);
+    } catch (err) {
+        console.error('Manual question edit error:', err);
+        res.status(500).json({ message: err.message || 'Failed to update question' });
+    }
+});
+
+// ======================================================
+// Update recommended video links for derived topics
+// ======================================================
+router.patch('/:id/topics/videos', auth, async (req, res) => {
+    try {
+        const form = await Form.findOne({ _id: req.params.id, faculty: req.faculty.id });
+        if (!form) return res.status(404).json({ message: 'Form not found' });
+
+        const { topicResources } = req.body;
+        if (!Array.isArray(topicResources)) {
+            return res.status(400).json({ message: 'topicResources must be an array' });
+        }
+
+        // Clean & update topicResources
+        form.topicResources = topicResources
+            .filter(tr => tr && tr.topic && tr.topic.trim())
+            .map(tr => ({
+                topic: String(tr.topic).trim(),
+                videoUrl: String(tr.videoUrl || '').trim(),
+                title: String(tr.title || '').trim()
+            }));
+
+        form.markModified('topicResources');
+        await form.save();
+        res.json(form);
+    } catch (err) {
+        console.error('Update topic videos error:', err);
+        res.status(500).json({ message: err.message || 'Failed to update topic videos' });
     }
 });
 
