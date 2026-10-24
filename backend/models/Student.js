@@ -6,8 +6,26 @@ const StudentSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
 
-    // Optional — student can add roll number during registration or later
-    rollNo: { type: String, default: '' },
+    // Compulsory student class and division
+    studentClass: {
+        type: String,
+        required: [true, 'Class is required'],
+        trim: true
+    },
+
+    division: {
+        type: String,
+        required: [true, 'Division is required'],
+        trim: true,
+        uppercase: true
+    },
+
+    // Compulsory roll number
+    rollNo: {
+        type: String,
+        required: [true, 'Roll number is required'],
+        trim: true
+    },
 
     // Gemini API key stored AES-256 encrypted (iv:ciphertext)
     geminiApiKey: { type: String, default: '' },

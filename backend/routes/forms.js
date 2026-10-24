@@ -2,6 +2,8 @@ const router = require('express').Router();
 const auth = require('../middleware/auth');
 const Faculty = require('../models/Faculty');
 const Form = require('../models/Form');
+const Student = require('../models/Student');
+const Notification = require('../models/Notification');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { decrypt } = require('../utils/encryption');
 
@@ -780,6 +782,91 @@ router.patch('/:id/topics/videos', auth, async (req, res) => {
     } catch (err) {
         console.error('Update topic videos error:', err);
         res.status(500).json({ message: err.message || 'Failed to update topic videos' });
+    }
+});
+
+// ======================================================
+// Get available student classes and divisions for targeting
+// ======================================================
+router.get('/:id/available-targets', auth, async (req, res) => {
+    try {
+        const registeredClasses = await Student.distinct('studentClass');
+        const registeredDivisions = await Student.distinct('division');
+
+        const defaultClasses = ['FY', 'SY', 'TY', 'Final Year'];
+        const defaultDivisions = ['A', 'B', 'C', 'D'];
+
+        const allClasses = [...new Set([...defaultClasses, ...registeredClasses.filter(Boolean)])];
+        const allDivisions = [...new Set([...defaultDivisions, ...registeredDivisions.filter(Boolean)])];
+
+        res.json({
+            classes: allClasses,
+            divisions: allDivisions
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// ======================================================
+// Publish form to target classes and divisions + notify students
+// ======================================================
+router.post('/:id/publish', auth, async (req, res) => {
+    try {
+        const form = await Form.findOne({ _id: req.params.id, faculty: req.faculty.id })
+            .populate('faculty', 'name department');
+        if (!form) return res.status(404).json({ message: 'Form not found' });
+
+        const { targetClasses, targetDivisions, allowAnonymous, reattemptDays } = req.body;
+
+        form.targetClasses = Array.isArray(targetClasses)
+            ? targetClasses.map(c => String(c).trim()).filter(Boolean)
+            : [];
+        form.targetDivisions = Array.isArray(targetDivisions)
+            ? targetDivisions.map(d => String(d).trim().toUpperCase()).filter(Boolean)
+            : [];
+        form.allowAnonymous = allowAnonymous !== undefined ? !!allowAnonymous : true;
+        form.reattemptDays = typeof reattemptDays === 'number' && reattemptDays >= 0 ? reattemptDays : 0;
+        form.isPublished = true;
+        form.publishedAt = new Date();
+
+        await form.save();
+
+        // Build query for matching students
+        const studentQuery = {};
+        if (form.targetClasses.length > 0) {
+            studentQuery.studentClass = { $in: form.targetClasses };
+        }
+        if (form.targetDivisions.length > 0) {
+            studentQuery.division = { $in: form.targetDivisions };
+        }
+
+        const matchingStudents = await Student.find(studentQuery).select('_id name studentClass division');
+
+        // Create notifications for matching students
+        if (matchingStudents.length > 0) {
+            const notifDocs = matchingStudents.map(s => ({
+                student: s._id,
+                form: form._id,
+                title: `New Assessment: ${form.title}`,
+                subject: form.subject,
+                facultyName: form.faculty?.name || 'Faculty',
+                isRead: false
+            }));
+
+            // Remove previous notifications for this form to prevent duplicates
+            await Notification.deleteMany({ form: form._id });
+            await Notification.insertMany(notifDocs);
+        }
+
+        res.json({
+            message: `Form successfully published to ${matchingStudents.length} student(s)!`,
+            form,
+            notifiedCount: matchingStudents.length
+        });
+    } catch (err) {
+        console.error('Publish form error:', err);
+        res.status(500).json({ message: err.message || 'Failed to publish form' });
     }
 });
 

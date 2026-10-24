@@ -70,6 +70,7 @@ app.use('/api/student-auth', require('./routes/student-auth'));
 app.use('/api/forms', require('./routes/forms'));
 app.use('/api/responses', require('./routes/responses'));
 app.use('/api/analytics', require('./routes/analytics'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 
 // Database Connection & Server Startup

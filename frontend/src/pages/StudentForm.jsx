@@ -9,10 +9,13 @@ export default function StudentForm() {
 
   const [form, setForm] = useState(null);
   const [err, setErr] = useState("");
-  const [studentInfo, setStudentInfo] = useState(null); // loaded from studentToken if present
+  const [studentInfo, setStudentInfo] = useState(null);
+  const [attemptNumber, setAttemptNumber] = useState(1);
+  const [isAnonymous, setIsAnonymous] = useState(false);
 
-  const [guestName, setGuestName] = useState("");
-  const [guestRollNo, setGuestRollNo] = useState("");
+  const [loadingAccess, setLoadingAccess] = useState(true);
+  const [isAuthRequired, setIsAuthRequired] = useState(false);
+  const [accessBlocked, setAccessBlocked] = useState(null);
 
   const [answers, setAnswers] = useState({});
   const [loading, setLoading] = useState(false);
@@ -24,21 +27,34 @@ export default function StudentForm() {
   const [result, setResult] = useState(null);
 
   useEffect(() => {
-    // Check if student profile is in cache (optional login)
-    const cached = localStorage.getItem('studentInfo');
-    if (cached) {
-      try {
-        setStudentInfo(JSON.parse(cached));
-      } catch (e) {}
+    const token = localStorage.getItem('studentToken');
+    if (!token) {
+      setIsAuthRequired(true);
+      setLoadingAccess(false);
+      return;
     }
 
-    // Load form directly without requiring login
-    api
-      .get(`/forms/link/${link}`)
-      .then((r) => setForm(r.data))
-      .catch(() =>
-        setErr("This form does not exist or is no longer active.")
-      );
+    setLoadingAccess(true);
+    Promise.all([
+      studentApi.get(`/responses/check-access/${link}`),
+      studentApi.get(`/forms/link/${link}`)
+    ]).then(([accessRes, formRes]) => {
+      setForm(formRes.data);
+      setStudentInfo(accessRes.data.student);
+      setAttemptNumber(accessRes.data.attemptNumber || 1);
+    }).catch((error) => {
+      const status = error.response?.status;
+      const data = error.response?.data;
+      if (status === 401) {
+        setIsAuthRequired(true);
+      } else if (status === 403 || status === 404) {
+        setAccessBlocked(data || { message: 'Access denied to this assessment.' });
+      } else {
+        setErr(data?.message || 'Failed to load assessment.');
+      }
+    }).finally(() => {
+      setLoadingAccess(false);
+    });
   }, [link]);
 
   const setAnswer = (qId, val) =>
@@ -63,11 +79,9 @@ export default function StudentForm() {
     try {
       const payload = {
         answers: answersArr,
-        studentName: studentInfo?.name || guestName,
-        rollNo: studentInfo?.rollNo || guestRollNo,
+        isAnonymous
       };
 
-      // Use studentApi so Authorization: Bearer <studentToken> is attached if available
       const { data } = await studentApi.post(`/responses/submit/${link}`, payload);
 
       // Save complete result from backend
@@ -85,6 +99,99 @@ export default function StudentForm() {
       setLoading(false);
     }
   };
+
+  // ==========================
+  // AUTH REQUIRED GATE
+  // ==========================
+
+  if (isAuthRequired) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "24px 16px",
+        }}
+      >
+        <div className="card" style={{ maxWidth: 460, width: "100%", textAlign: "center", padding: 32 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🎓</div>
+          <h2 style={{ fontSize: 20, marginBottom: 8 }}>Student Login Required</h2>
+          <p style={{ color: "var(--muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+            Submitting this assessment requires a verified student registration. Please log in or register with your college class and division to continue.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <button
+              className="btn btn-primary"
+              style={{ width: "100%", padding: "12px", fontSize: 14 }}
+              onClick={() => nav(`/student/login?redirect=/f/${link}`)}
+            >
+              🔑 Log In to Continue
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ width: "100%", padding: "12px", fontSize: 14 }}
+              onClick={() => nav(`/student/register?redirect=/f/${link}`)}
+            >
+              📝 Register Student Account
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================
+  // ACCESS BLOCKED (CLASS / DIVISION / COOLDOWN)
+  // ==========================
+
+  if (accessBlocked) {
+    const isCooldown = accessBlocked.reason === "cooldown_active";
+    const isCompleted = accessBlocked.reason === "single_attempt_completed";
+
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "24px 16px",
+        }}
+      >
+        <div className="card" style={{ maxWidth: 500, width: "100%", textAlign: "center", padding: 32 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>
+            {isCooldown ? "⏳" : isCompleted ? "✅" : "🚫"}
+          </div>
+          <h2 style={{ fontSize: 20, marginBottom: 8 }}>
+            {isCooldown ? "Assessment Cooldown Active" : isCompleted ? "Assessment Completed" : "Access Restricted"}
+          </h2>
+          <p style={{ color: "var(--muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+            {accessBlocked.message}
+          </p>
+
+          {accessBlocked.lastSubmission && (
+            <div style={{ background: "var(--bg)", borderRadius: 10, padding: "12px 16px", marginBottom: 20, border: "1px solid var(--border)", textAlign: "left" }}>
+              <div style={{ fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Your Previous Submission</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontWeight: 700, fontSize: 16, color: "var(--accent)" }}>Score: {accessBlocked.lastSubmission.score}%</span>
+                <span style={{ fontSize: 12, color: "var(--muted)" }}>{new Date(accessBlocked.lastSubmission.submittedAt).toLocaleDateString()}</span>
+              </div>
+            </div>
+          )}
+
+          <button
+            className="btn btn-primary"
+            style={{ width: "100%", padding: "12px", fontSize: 14 }}
+            onClick={() => nav("/student/dashboard")}
+          >
+            📋 Go to My Student Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ==========================
   // ERROR PAGE
@@ -111,7 +218,7 @@ export default function StudentForm() {
   // LOADING FORM
   // ==========================
 
-  if (!form)
+  if (loadingAccess || !form)
     return (
       <div
         style={{
@@ -121,7 +228,7 @@ export default function StudentForm() {
           justifyContent: "center",
         }}
       >
-        <p style={{ color: "var(--muted)" }}>Loading form...</p>
+        <p style={{ color: "var(--muted)" }}>Verifying student enrollment &amp; loading assessment...</p>
       </div>
     );
 
@@ -150,72 +257,61 @@ export default function StudentForm() {
             {form.subject}
           </p>
 
-          {/* Logged-in student chip */}
-          {studentInfo ? (
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              marginTop: 10, background: 'rgba(79,110,247,0.08)',
-              border: '1px solid rgba(79,110,247,0.2)', borderRadius: 20,
-              padding: '4px 14px', fontSize: 13
-            }}>
-              <span style={{ fontSize: 16 }}>🎓</span>
-              <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{studentInfo.name}</span>
-              {studentInfo.rollNo && <span style={{ color: 'var(--muted)' }}>· {studentInfo.rollNo}</span>}
-            </div>
-          ) : (
-            <div style={{
-              background: '#ffffff',
-              border: '1px solid var(--border, #e5e7eb)',
-              borderRadius: 12,
-              padding: '16px 20px',
-              marginTop: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
-                  👤 Participant Information <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: 13 }}>(Optional)</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => nav(`/student/login?redirect=/f/${link}`)}
-                  className="btn btn-secondary"
-                  style={{ fontSize: 12, padding: '5px 12px' }}
-                >
-                  🎓 Log in to save to your history
-                </button>
+          {/* Logged-in student status bar & Anonymous option */}
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 12,
+            marginTop: 16,
+            background: "var(--card)",
+            border: "1px solid var(--border)",
+            borderRadius: 12,
+            padding: "14px 18px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 22 }}>🎓</span>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>
+                  {studentInfo?.name}{" "}
+                  {studentInfo?.rollNo && <span style={{ color: "var(--muted)", fontWeight: 400 }}>({studentInfo.rollNo})</span>}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                  Class: <strong>{studentInfo?.studentClass || "Enrolled"}</strong> · Div: <strong>{studentInfo?.division || "—"}</strong> · Attempt <strong>#{attemptNumber}</strong>
+                </div>
               </div>
+            </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-                <div>
-                  <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
-                    Your Name (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
-                    placeholder="e.g. John Doe (or leave blank)"
-                    style={{ fontSize: 14, padding: '8px 12px' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
-                    Roll No / Student ID (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={guestRollNo}
-                    onChange={(e) => setGuestRollNo(e.target.value)}
-                    placeholder="e.g. 21CS001"
-                    style={{ fontSize: 14, padding: '8px 12px' }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+            {form.allowAnonymous ? (
+              <label style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                cursor: "pointer",
+                background: isAnonymous ? "rgba(239,68,68,0.08)" : "var(--bg)",
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: `1px solid ${isAnonymous ? "rgba(239,68,68,0.3)" : "var(--border)"}`,
+                transition: "all 0.15s"
+              }}>
+                <input
+                  type="checkbox"
+                  checked={isAnonymous}
+                  onChange={e => setIsAnonymous(e.target.checked)}
+                  style={{ accentColor: "var(--accent)", width: 16, height: 16 }}
+                />
+                <span style={{ fontSize: 13, fontWeight: 600, color: isAnonymous ? "#ef4444" : "var(--text)" }}>
+                  🎭 Submit Anonymously
+                </span>
+              </label>
+            ) : (
+              <span style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>
+                Verified submission (Faculty disabled anonymous responses)
+              </span>
+            )}
+          </div>
         </div>
 
 
@@ -549,6 +645,7 @@ export default function StudentForm() {
                   borderRadius: 12,
                   padding: "20px 24px",
                   borderLeft: "3px solid var(--accent)",
+                  marginBottom: 20,
                 }}
               >
                 <h3 style={{ marginBottom: 10 }}>
@@ -563,6 +660,40 @@ export default function StudentForm() {
                 >
                   {result.recommendation}
                 </p>
+              </div>
+            )}
+
+            {/* GEMINI API KEY NOTICE IF NO KEY PROVIDED */}
+            {!result.hasStudentApiKey && (
+              <div
+                className="card"
+                style={{
+                  textAlign: "left",
+                  background: "rgba(245, 158, 11, 0.08)",
+                  border: "1px solid rgba(245, 158, 11, 0.3)",
+                  borderRadius: 12,
+                  padding: "18px 22px",
+                  borderLeft: "4px solid #f59e0b",
+                  marginBottom: 20,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                  <span style={{ fontSize: 20 }}>💡</span>
+                  <h3 style={{ margin: 0, fontSize: 15, color: "#d97706" }}>
+                    Personalized AI Evaluation Skipped
+                  </h3>
+                </div>
+                <p style={{ margin: "4px 0 10px", lineHeight: 1.6, color: "var(--text)", fontSize: 13 }}>
+                  Faculty API keys are protected and not used for student evaluations. To get instant AI descriptive evaluations and personalized learning recommendations on future attempts, add your free Gemini API key.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => nav("/student/dashboard")}
+                  style={{ fontSize: 12, padding: "5px 12px" }}
+                >
+                  ⚙️ Add Gemini API Key in Dashboard →
+                </button>
               </div>
             )}
 

@@ -9,14 +9,28 @@ const { encrypt, decrypt } = require('../utils/encryption');
 // ======================================================
 router.post('/register', async (req, res) => {
     try {
-        const { name, email, password, rollNo } = req.body;
-        if (!name || !email || !password) {
-            return res.status(400).json({ message: 'Name, email and password are required' });
+        const { name, email, password, rollNo, studentClass, class: bodyClass, division } = req.body;
+        const targetClass = (studentClass || bodyClass || '').trim();
+        const targetDiv = (division || '').trim().toUpperCase();
+        const targetRoll = (rollNo || '').trim();
+
+        if (!name || !email || !password || !targetClass || !targetDiv || !targetRoll) {
+            return res.status(400).json({
+                message: 'All fields (Name, Email, Password, Class, Division, and Roll Number) are required.'
+            });
         }
         const exists = await Student.findOne({ email });
         if (exists) return res.status(400).json({ message: 'Email already registered' });
 
-        const student = await Student.create({ name, email, password, rollNo: rollNo || '' });
+        const student = await Student.create({
+            name: name.trim(),
+            email: email.trim(),
+            password,
+            rollNo: targetRoll,
+            studentClass: targetClass,
+            division: targetDiv
+        });
+
         const token = jwt.sign(
             { id: student._id, role: 'student' },
             process.env.JWT_SECRET,
@@ -29,6 +43,8 @@ router.post('/register', async (req, res) => {
                 name: student.name,
                 email: student.email,
                 rollNo: student.rollNo,
+                studentClass: student.studentClass,
+                division: student.division,
                 hasApiKey: false
             }
         });
@@ -60,6 +76,8 @@ router.post('/login', async (req, res) => {
                 name: student.name,
                 email: student.email,
                 rollNo: student.rollNo,
+                studentClass: student.studentClass || '',
+                division: student.division || '',
                 hasApiKey: !!student.geminiApiKey
             }
         });
@@ -81,8 +99,34 @@ router.get('/me', studentAuth, async (req, res) => {
             name: student.name,
             email: student.email,
             rollNo: student.rollNo,
+            studentClass: student.studentClass || '',
+            division: student.division || '',
             hasApiKey: !!student.geminiApiKey,
             createdAt: student.createdAt
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+// ======================================================
+// GET ALL DISTINCT CLASSES & DIVISIONS (Public/Faculty)
+// ======================================================
+router.get('/classes-divisions', async (req, res) => {
+    try {
+        const registeredClasses = await Student.distinct('studentClass');
+        const registeredDivisions = await Student.distinct('division');
+
+        const defaultClasses = ['FY', 'SY', 'TY', 'Final Year'];
+        const defaultDivisions = ['A', 'B', 'C', 'D'];
+
+        const allClasses = [...new Set([...defaultClasses, ...registeredClasses.filter(Boolean)])];
+        const allDivisions = [...new Set([...defaultDivisions, ...registeredDivisions.filter(Boolean)])];
+
+        res.json({
+            classes: allClasses,
+            divisions: allDivisions
         });
     } catch (err) {
         res.status(500).json({ message: err.message });

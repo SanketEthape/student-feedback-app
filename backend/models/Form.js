@@ -109,6 +109,38 @@ const FormSchema = new mongoose.Schema({
         default: true
     },
 
+    // Publishing & Targeting status
+    isPublished: {
+        type: Boolean,
+        default: false
+    },
+
+    publishedAt: {
+        type: Date,
+        default: null
+    },
+
+    targetClasses: {
+        type: [String],
+        default: []
+    },
+
+    targetDivisions: {
+        type: [String],
+        default: []
+    },
+
+    allowAnonymous: {
+        type: Boolean,
+        default: true
+    },
+
+    // Reattempt cooldown in days (0 = single attempt only, N = retake allowed after N days)
+    reattemptDays: {
+        type: Number,
+        default: 0
+    },
+
     createdAt: {
         type: Date,
         default: Date.now

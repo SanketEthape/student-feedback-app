@@ -13,18 +13,159 @@ const { decrypt } = require('../utils/encryption');
 // SUBMIT RESPONSE — Student Login Optional
 // ======================================================
 
-router.post('/submit/:link', optionalStudentAuth, async (req, res) => {
+// ======================================================
+// CHECK ACCESS & COOLDOWN STATUS (Student Only)
+// ======================================================
+router.get('/check-access/:link', studentAuth, async (req, res) => {
     try {
-        const { answers, studentName: bodyName, rollNo: bodyRollNo } = req.body;
+        const form = await Form.findOne({ uniqueLink: req.params.link, isActive: true })
+            .populate('faculty', 'name department');
+
+        if (!form) {
+            return res.status(404).json({
+                allowed: false,
+                reason: 'not_found',
+                message: 'This form does not exist or has been deactivated.'
+            });
+        }
+
+        const student = await Student.findById(req.student.id);
+        if (!student) {
+            return res.status(401).json({
+                allowed: false,
+                reason: 'unauthorized',
+                message: 'Student account not found. Please log in.'
+            });
+        }
+
+        // Check if form is published
+        if (!form.isPublished) {
+            return res.status(403).json({
+                allowed: false,
+                reason: 'not_published',
+                message: 'This assessment has not been published by the faculty yet.'
+            });
+        }
+
+        // Check class targeting
+        if (form.targetClasses && form.targetClasses.length > 0) {
+            if (!form.targetClasses.includes(student.studentClass)) {
+                return res.status(403).json({
+                    allowed: false,
+                    reason: 'class_mismatch',
+                    message: `This assessment is restricted to class: ${form.targetClasses.join(', ')}. Your registered class is ${student.studentClass}.`
+                });
+            }
+        }
+
+        // Check division targeting
+        if (form.targetDivisions && form.targetDivisions.length > 0) {
+            if (!form.targetDivisions.includes(student.division)) {
+                return res.status(403).json({
+                    allowed: false,
+                    reason: 'division_mismatch',
+                    message: `This assessment is restricted to division: ${form.targetDivisions.join(', ')}. Your registered division is ${student.division}.`
+                });
+            }
+        }
+
+        // Check past submissions & retake cooldown
+        const pastResponses = await Response.find({
+            form: form._id,
+            student: student._id
+        }).sort({ submittedAt: -1 });
+
+        let cooldownActive = false;
+        let remainingDays = 0;
+        let remainingHours = 0;
+        let nextAvailableDate = null;
+
+        if (pastResponses.length > 0) {
+            const reattemptDays = typeof form.reattemptDays === 'number' ? form.reattemptDays : 0;
+            const lastSubmission = pastResponses[0];
+
+            if (reattemptDays === 0) {
+                return res.status(403).json({
+                    allowed: false,
+                    reason: 'single_attempt_completed',
+                    message: 'You have already completed this assessment. Re-attempts are not allowed for this form.',
+                    lastSubmission: {
+                        score: lastSubmission.overallScore,
+                        level: lastSubmission.overallLevel,
+                        submittedAt: lastSubmission.submittedAt
+                    }
+                });
+            }
+
+            const now = new Date();
+            const elapsedMs = now - new Date(lastSubmission.submittedAt);
+            const requiredMs = reattemptDays * 24 * 60 * 60 * 1000;
+
+            if (elapsedMs < requiredMs) {
+                cooldownActive = true;
+                const remainingMs = requiredMs - elapsedMs;
+                remainingDays = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
+                remainingHours = Math.ceil(remainingMs / (60 * 60 * 1000));
+                nextAvailableDate = new Date(new Date(lastSubmission.submittedAt).getTime() + requiredMs);
+
+                return res.status(403).json({
+                    allowed: false,
+                    reason: 'cooldown_active',
+                    cooldownActive: true,
+                    remainingDays,
+                    remainingHours,
+                    nextAvailableDate,
+                    message: `Cooldown active: You can re-attempt this assessment in ${remainingDays > 1 ? remainingDays + ' days' : remainingHours + ' hours'}.`,
+                    lastSubmission: {
+                        score: lastSubmission.overallScore,
+                        level: lastSubmission.overallLevel,
+                        submittedAt: lastSubmission.submittedAt
+                    }
+                });
+            }
+        }
+
+        res.json({
+            allowed: true,
+            form: {
+                id: form._id,
+                title: form.title,
+                subject: form.subject,
+                allowAnonymous: form.allowAnonymous,
+                reattemptDays: form.reattemptDays,
+                facultyName: form.faculty?.name || 'Faculty'
+            },
+            student: {
+                id: student._id,
+                name: student.name,
+                rollNo: student.rollNo,
+                studentClass: student.studentClass,
+                division: student.division,
+                hasApiKey: !!student.geminiApiKey
+            },
+            attemptNumber: pastResponses.length + 1
+        });
+    } catch (err) {
+        console.error('Check access error:', err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+// ======================================================
+// SUBMIT RESPONSE — Mandatory Student Authentication
+// ======================================================
+router.post('/submit/:link', studentAuth, async (req, res) => {
+    try {
+        const { answers, isAnonymous: bodyAnonymous } = req.body;
 
         // --------------------------------------------------
         // FIND FORM
         // --------------------------------------------------
-
         const form = await Form.findOne({
             uniqueLink: req.params.link,
             isActive: true
-        }).populate('faculty', 'geminiApiKey name department');
+        }).populate('faculty', 'name department');
 
         if (!form) {
             return res.status(404).json({
@@ -32,32 +173,91 @@ router.post('/submit/:link', optionalStudentAuth, async (req, res) => {
             });
         }
 
-        // --------------------------------------------------
-        // FETCH STUDENT DETAILS (IF LOGGED IN)
-        // --------------------------------------------------
-
-        let student = null;
-        let studentName = bodyName ? bodyName.trim() : 'Anonymous';
-        let rollNo = bodyRollNo ? bodyRollNo.trim() : '';
-
-        if (req.student && req.student.id) {
-            student = await Student.findById(req.student.id).select('name rollNo geminiApiKey');
-            if (student) {
-                studentName = student.name || studentName || 'Anonymous';
-                rollNo = student.rollNo || rollNo || '';
-            }
+        if (!form.isPublished) {
+            return res.status(403).json({
+                message: 'This assessment has not been published yet.'
+            });
         }
 
         // --------------------------------------------------
-        // GEMINI SETUP
-        // Priority: Student Key → Faculty Key → No AI
+        // FETCH VERIFIED STUDENT DETAILS
         // --------------------------------------------------
+        const student = await Student.findById(req.student.id);
+        if (!student) {
+            return res.status(401).json({
+                message: 'Student account not found. Please register or log in first.'
+            });
+        }
 
+        // Class & Division Restriction Verification
+        if (form.targetClasses && form.targetClasses.length > 0) {
+            if (!form.targetClasses.includes(student.studentClass)) {
+                return res.status(403).json({
+                    message: `This assessment is restricted to class: ${form.targetClasses.join(', ')}. Your registered class is ${student.studentClass}.`
+                });
+            }
+        }
+
+        if (form.targetDivisions && form.targetDivisions.length > 0) {
+            if (!form.targetDivisions.includes(student.division)) {
+                return res.status(403).json({
+                    message: `This assessment is restricted to division: ${form.targetDivisions.join(', ')}. Your registered division is ${student.division}.`
+                });
+            }
+        }
+
+        // Reattempt Cooldown Verification
+        const pastResponses = await Response.find({
+            form: form._id,
+            student: student._id
+        }).sort({ submittedAt: -1 });
+
+        const attemptNumber = pastResponses.length + 1;
+
+        if (pastResponses.length > 0) {
+            const reattemptDays = typeof form.reattemptDays === 'number' ? form.reattemptDays : 0;
+            const lastSubmission = pastResponses[0];
+
+            if (reattemptDays === 0) {
+                return res.status(403).json({
+                    message: 'You have already completed this assessment. Re-attempts are not allowed for this form.'
+                });
+            }
+
+            const now = new Date();
+            const elapsedMs = now - new Date(lastSubmission.submittedAt);
+            const requiredMs = reattemptDays * 24 * 60 * 60 * 1000;
+
+            if (elapsedMs < requiredMs) {
+                const remainingMs = requiredMs - elapsedMs;
+                const remainingDays = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
+                const remainingHours = Math.ceil(remainingMs / (60 * 60 * 1000));
+                return res.status(403).json({
+                    message: `Cooldown active: You can re-attempt this form in ${remainingDays > 1 ? remainingDays + ' days' : remainingHours + ' hours'}.`
+                });
+            }
+        }
+
+        // Anonymity Handling
+        const wantsAnonymous = !!bodyAnonymous;
+        if (wantsAnonymous && !form.allowAnonymous) {
+            return res.status(400).json({
+                message: 'Anonymous submissions are not allowed for this assessment.'
+            });
+        }
+
+        const isAnonymous = wantsAnonymous && form.allowAnonymous;
+        const studentName = isAnonymous ? 'Anonymous' : (student.name || 'Anonymous');
+        const rollNo = isAnonymous ? 'Hidden' : (student.rollNo || '');
+
+        // --------------------------------------------------
+        // GEMINI SETUP — STRICTLY STUDENT API KEY ONLY
+        // Never exhaust faculty API key for student evaluations
+        // --------------------------------------------------
         let model = null;
         let aiKeySource = 'none';
 
-        // Try student's key first
-        if (student && student.geminiApiKey) {
+        if (student.geminiApiKey) {
             const decryptedStudentKey = decrypt(student.geminiApiKey);
             if (decryptedStudentKey) {
                 try {
@@ -70,19 +270,7 @@ router.post('/submit/:link', optionalStudentAuth, async (req, res) => {
             }
         }
 
-        // Fall back to faculty key if student has none
-        if (!model && form.faculty?.geminiApiKey) {
-            const decryptedFacultyKey = decrypt(form.faculty.geminiApiKey);
-            if (decryptedFacultyKey) {
-                try {
-                    const genAI = new GoogleGenerativeAI(decryptedFacultyKey);
-                    model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite' });
-                    aiKeySource = 'faculty';
-                } catch {
-                    model = null;
-                }
-            }
-        }
+        // Notice: NO FALLBACK TO FACULTY API KEY!
 
         // --------------------------------------------------
         // CREATE BASE ANSWERS
@@ -552,6 +740,10 @@ Use exactly this format:
 
                 rollNo,
 
+                isAnonymous,
+
+                attemptNumber,
+
                 answers: scored,
 
                 recommendation,
@@ -594,6 +786,10 @@ Use exactly this format:
 
             overallLevel,
 
+            isAnonymous,
+
+            attemptNumber,
+
             answers: scored,
 
             weakTopics,
@@ -606,7 +802,11 @@ Use exactly this format:
             responseId:
                 response._id,
 
-            aiKeySource
+            hasStudentApiKey: !!model,
+
+            apiKeyNotice: !model
+                ? '💡 Add your personal Gemini API key in your Student Dashboard to unlock AI-powered descriptive evaluation and personalized learning recommendations.'
+                : ''
         });
 
     }

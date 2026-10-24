@@ -23,15 +23,41 @@ export default function FormAnalytics() {
     const [videoLinks, setVideoLinks] = useState([]);
     const [savingVideos, setSavingVideos] = useState(false);
 
+    // Publishing & Target Classes/Divisions State
+    const [showPublishModal, setShowPublishModal] = useState(false);
+    const [publishing, setPublishing] = useState(false);
+    const [targetClasses, setTargetClasses] = useState([]);
+    const [targetDivisions, setTargetDivisions] = useState([]);
+    const [allowAnonymous, setAllowAnonymous] = useState(true);
+    const [reattemptDays, setReattemptDays] = useState(0);
+    const [availableTargets, setAvailableTargets] = useState({
+        classes: ['FY', 'SY', 'TY', 'Final Year'],
+        divisions: ['A', 'B', 'C', 'D']
+    });
+
     useEffect(() => {
         Promise.all([
             api.get(`/forms/${id}`),
             api.get(`/analytics/form/${id}`),
-            api.get(`/responses/form/${id}`)
-        ]).then(([f, a, r]) => {
+            api.get(`/responses/form/${id}`),
+            api.get(`/forms/${id}/available-targets`).catch(() => ({ data: null }))
+        ]).then(([f, a, r, targetsRes]) => {
             setForm(f.data);
             setAnalytics(a.data);
             setResponses(r.data);
+
+            // Initialize publishing settings
+            setTargetClasses(f.data.targetClasses || []);
+            setTargetDivisions(f.data.targetDivisions || []);
+            setAllowAnonymous(f.data.allowAnonymous !== undefined ? f.data.allowAnonymous : true);
+            setReattemptDays(f.data.reattemptDays !== undefined ? f.data.reattemptDays : 0);
+
+            if (targetsRes?.data) {
+                setAvailableTargets({
+                    classes: targetsRes.data.classes?.length ? targetsRes.data.classes : ['FY', 'SY', 'TY', 'Final Year'],
+                    divisions: targetsRes.data.divisions?.length ? targetsRes.data.divisions : ['A', 'B', 'C', 'D']
+                });
+            }
 
             // Initialize topic video links from form.topicResources
             const resources = f.data.topicResources || [];
@@ -47,10 +73,44 @@ export default function FormAnalytics() {
         }).finally(() => setLoading(false));
     }, [id]);
 
-    const copyLink = () => {
-        if (!form) return;
-        navigator.clipboard.writeText(`${window.location.origin}/f/${form.uniqueLink}`);
-        alert('Student link copied!');
+    const handlePublishForm = async () => {
+        if (targetClasses.length === 0) {
+            alert('Please select at least one class to target (e.g. FY, SY, TY, Final Year).');
+            return;
+        }
+        if (targetDivisions.length === 0) {
+            alert('Please select at least one division to target (e.g. A, B, C, D).');
+            return;
+        }
+        setPublishing(true);
+        try {
+            const { data } = await api.post(`/forms/${id}/publish`, {
+                targetClasses,
+                targetDivisions,
+                allowAnonymous,
+                reattemptDays: Number(reattemptDays) || 0
+            });
+            setForm(data.form);
+            setShowPublishModal(false);
+            setActionMsg(`📢 Assessment published! ${data.notificationsCount} students notified.`);
+        } catch (e) {
+            setActionMsg('❌ ' + (e.response?.data?.message || 'Failed to publish assessment'));
+        } finally {
+            setPublishing(false);
+            setTimeout(() => setActionMsg(''), 4500);
+        }
+    };
+
+    const toggleTargetClass = (cls) => {
+        setTargetClasses(prev =>
+            prev.includes(cls) ? prev.filter(c => c !== cls) : [...prev, cls]
+        );
+    };
+
+    const toggleTargetDivision = (div) => {
+        setTargetDivisions(prev =>
+            prev.includes(div) ? prev.filter(d => d !== div) : [...prev, div]
+        );
     };
 
     const handleApprove = async (qIndex) => {
@@ -247,7 +307,32 @@ export default function FormAnalytics() {
                     </p>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-                    <button className="btn btn-primary" onClick={copyLink}>📋 Copy Student Link</button>
+                    {form.isPublished ? (
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                            <span style={{
+                                padding: '6px 12px',
+                                borderRadius: 20,
+                                background: 'rgba(34, 197, 94, 0.12)',
+                                color: '#16a34a',
+                                fontSize: 13,
+                                fontWeight: 600,
+                                border: '1px solid rgba(34, 197, 94, 0.3)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6
+                            }}>
+                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
+                                Published: {form.targetClasses?.join(', ')} ({form.targetDivisions?.join(', ')})
+                            </span>
+                            <button className="btn btn-secondary" onClick={() => setShowPublishModal(true)} style={{ fontSize: 13, padding: '6px 12px' }}>
+                                ⚙️ Target &amp; Settings
+                            </button>
+                        </div>
+                    ) : (
+                        <button className="btn btn-primary" onClick={() => setShowPublishModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            📢 Publish Assessment
+                        </button>
+                    )}
                     {!allApproved && (
                         <p style={{ fontSize: 12, color: 'var(--accent2)', textAlign: 'right' }}>
                             ⚠️ {totalQuestions - approvedCount} question{totalQuestions - approvedCount > 1 ? 's' : ''} pending approval
@@ -1000,10 +1085,20 @@ export default function FormAnalytics() {
                     {responses.length === 0 ? <p style={{ color: 'var(--muted)' }}>No responses yet.</p> :
                         responses.map(r => (
                             <div key={r._id} className="card">
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
                                     <div>
                                         <strong>{r.studentName}</strong>
                                         {r.rollNo && <span style={{ color: 'var(--muted)', fontSize: 13, marginLeft: 8 }}>Roll: {r.rollNo}</span>}
+                                        {r.isAnonymous && (
+                                            <span style={{ marginLeft: 8, fontSize: 11, background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
+                                                🎭 Anonymous
+                                            </span>
+                                        )}
+                                        {r.attemptNumber && r.attemptNumber > 1 && (
+                                            <span style={{ marginLeft: 8, fontSize: 11, background: 'rgba(79,110,247,0.1)', color: 'var(--accent)', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
+                                                Attempt #{r.attemptNumber}
+                                            </span>
+                                        )}
                                     </div>
                                     <span style={{ color: 'var(--muted)', fontSize: 13 }}>{new Date(r.submittedAt).toLocaleString()}</span>
                                 </div>
@@ -1022,6 +1117,214 @@ export default function FormAnalytics() {
                                 )}
                             </div>
                         ))}
+                </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* PUBLISH ASSESSMENT MODAL */}
+            {/* ========================================================= */}
+            {showPublishModal && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 1000,
+                    background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '20px 16px'
+                }} onClick={() => !publishing && setShowPublishModal(false)}>
+                    <div style={{
+                        background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 580,
+                        maxHeight: '92vh', overflowY: 'auto', padding: 28,
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.4)', border: '1px solid var(--border)'
+                    }} onClick={e => e.stopPropagation()}>
+                        {/* Modal Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+                            <div>
+                                <h3 style={{ fontSize: 20, marginBottom: 4 }}>📢 Publish Assessment</h3>
+                                <p style={{ color: 'var(--muted)', fontSize: 13 }}>
+                                    Select target classes and student policies. Notifications will be sent automatically.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => !publishing && setShowPublishModal(false)}
+                                style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--muted)' }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Target Classes */}
+                        <div style={{ marginBottom: 20 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                <label style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--accent)' }}>
+                                    Target Classes *
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={() => setTargetClasses(targetClasses.length === availableTargets.classes.length ? [] : [...availableTargets.classes])}
+                                    style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+                                >
+                                    {targetClasses.length === availableTargets.classes.length ? 'Deselect All' : 'Select All'}
+                                </button>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                {availableTargets.classes.map(cls => {
+                                    const selected = targetClasses.includes(cls);
+                                    return (
+                                        <button
+                                            key={cls}
+                                            type="button"
+                                            onClick={() => toggleTargetClass(cls)}
+                                            style={{
+                                                padding: '8px 16px',
+                                                borderRadius: 8,
+                                                fontSize: 13,
+                                                fontWeight: 600,
+                                                cursor: 'pointer',
+                                                border: `1.5px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                                                background: selected ? 'rgba(79,110,247,0.12)' : 'var(--bg)',
+                                                color: selected ? 'var(--accent)' : 'var(--text)',
+                                                transition: 'all 0.15s'
+                                            }}
+                                        >
+                                            {selected ? '✓ ' : '+ '} {cls}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Target Divisions */}
+                        <div style={{ marginBottom: 22 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                <label style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--accent)' }}>
+                                    Target Divisions *
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={() => setTargetDivisions(targetDivisions.length === availableTargets.divisions.length ? [] : [...availableTargets.divisions])}
+                                    style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+                                >
+                                    {targetDivisions.length === availableTargets.divisions.length ? 'Deselect All' : 'Select All'}
+                                </button>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                {availableTargets.divisions.map(div => {
+                                    const selected = targetDivisions.includes(div);
+                                    return (
+                                        <button
+                                            key={div}
+                                            type="button"
+                                            onClick={() => toggleTargetDivision(div)}
+                                            style={{
+                                                padding: '8px 16px',
+                                                borderRadius: 8,
+                                                fontSize: 13,
+                                                fontWeight: 600,
+                                                cursor: 'pointer',
+                                                border: `1.5px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                                                background: selected ? 'rgba(79,110,247,0.12)' : 'var(--bg)',
+                                                color: selected ? 'var(--accent)' : 'var(--text)',
+                                                transition: 'all 0.15s'
+                                            }}
+                                        >
+                                            {selected ? '✓ Div ' : '+ Div '} {div}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Anonymous Submissions Policy */}
+                        <div style={{
+                            background: 'var(--bg)',
+                            borderRadius: 10,
+                            padding: '14px 16px',
+                            marginBottom: 20,
+                            border: '1px solid var(--border)'
+                        }}>
+                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={allowAnonymous}
+                                    onChange={e => setAllowAnonymous(e.target.checked)}
+                                    style={{ marginTop: 3, width: 18, height: 18, accentColor: 'var(--accent)' }}
+                                />
+                                <div>
+                                    <div style={{ fontWeight: 600, fontSize: 14 }}>Allow Anonymous Responses</div>
+                                    <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2, margin: 0, lineHeight: 1.5 }}>
+                                        Students must register and log in, but can choose to hide their name and roll number from the faculty analytics.
+                                    </p>
+                                </div>
+                            </label>
+                        </div>
+
+                        {/* Reattempt Cooldown Policy */}
+                        <div style={{ marginBottom: 26 }}>
+                            <label style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--accent)', display: 'block', marginBottom: 6 }}>
+                                Re-attempt Cooldown Window
+                            </label>
+                            <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 10 }}>
+                                Number of days before a student is allowed to re-attempt this form. (0 = Single attempt only).
+                            </p>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="365"
+                                    value={reattemptDays}
+                                    onChange={e => setReattemptDays(Math.max(0, parseInt(e.target.value) || 0))}
+                                    style={{ width: 100, padding: '8px 12px', fontSize: 14 }}
+                                />
+                                <span style={{ fontSize: 13, color: 'var(--muted)' }}>days between attempts</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                {[
+                                    { label: 'Single Attempt (0d)', days: 0 },
+                                    { label: '3 Days', days: 3 },
+                                    { label: '7 Days', days: 7 },
+                                    { label: '14 Days', days: 14 },
+                                    { label: '30 Days', days: 30 }
+                                ].map(p => (
+                                    <button
+                                        key={p.days}
+                                        type="button"
+                                        onClick={() => setReattemptDays(p.days)}
+                                        style={{
+                                            padding: '4px 10px',
+                                            borderRadius: 6,
+                                            fontSize: 12,
+                                            cursor: 'pointer',
+                                            background: reattemptDays === p.days ? 'var(--accent)' : 'var(--bg)',
+                                            color: reattemptDays === p.days ? '#fff' : 'var(--muted)',
+                                            border: `1px solid ${reattemptDays === p.days ? 'var(--accent)' : 'var(--border)'}`
+                                        }}
+                                    >
+                                        {p.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Modal Action Buttons */}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                            <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => setShowPublishModal(false)}
+                                disabled={publishing}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={handlePublishForm}
+                                disabled={publishing}
+                                style={{ minWidth: 150 }}
+                            >
+                                {publishing ? 'Publishing...' : form.isPublished ? 'Update & Re-Publish' : '📢 Publish & Notify'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

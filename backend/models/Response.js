@@ -132,6 +132,16 @@ const ResponseSchema = new mongoose.Schema({
         default: ''
     },
 
+    isAnonymous: {
+        type: Boolean,
+        default: false
+    },
+
+    attemptNumber: {
+        type: Number,
+        default: 1
+    },
+
     // All 10 question evaluations
     answers: {
         type: [AnswerSchema],

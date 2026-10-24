@@ -236,8 +236,9 @@ export default function StudentDashboard() {
   const nav = useNavigate();
   const [profile, setProfile] = useState(null);
   const [responses, setResponses] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setTab] = useState('history'); // 'history' | 'profile'
+  const [activeTab, setTab] = useState('assigned'); // 'assigned' | 'history' | 'profile'
   const [selectedResponse, setSelectedResponse] = useState(null);
 
   // API Key form
@@ -255,16 +256,27 @@ export default function StudentDashboard() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [profileRes, responsesRes] = await Promise.all([
+      const [profileRes, responsesRes, notifRes] = await Promise.all([
         studentApi.get('/student-auth/me'),
-        studentApi.get('/responses/my-responses')
+        studentApi.get('/responses/my-responses'),
+        studentApi.get('/notifications/my').catch(() => ({ data: [] }))
       ]);
       setProfile(profileRes.data);
       setResponses(responsesRes.data);
+      setNotifications(notifRes.data || []);
     } catch {
       nav('/student/login');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const markNotificationRead = async (notifId) => {
+    try {
+      await studentApi.patch(`/notifications/${notifId}/read`);
+      setNotifications(prev => prev.map(n => n._id === notifId ? { ...n, isRead: true } : n));
+    } catch (e) {
+      console.error('Failed to mark notification read:', e);
     }
   };
 
@@ -337,12 +349,46 @@ export default function StudentDashboard() {
           <div>
             <h1 style={{ fontSize: 22, marginBottom: 4 }}>Welcome back, {profile?.name}! 👋</h1>
             <p style={{ color: 'var(--muted)', fontSize: 14 }}>
+              {profile?.studentClass && <><strong>Class:</strong> {profile.studentClass} ({profile.division}) · </>}
               {profile?.rollNo && <><strong>Roll No:</strong> {profile.rollNo} · </>}
               <strong>Submissions:</strong> {responses.length} assessment{responses.length !== 1 ? 's' : ''} completed
               {profile?.hasApiKey && <> · <span style={{ color: '#22c55e' }}>✅ AI Key Active</span></>}
             </p>
           </div>
         </div>
+
+        {/* Gemini API Key Warning Banner */}
+        {!profile?.hasApiKey && (
+          <div style={{
+            background: 'rgba(245, 158, 11, 0.08)',
+            border: '1px solid rgba(245, 158, 11, 0.3)',
+            borderRadius: 12,
+            padding: '14px 18px',
+            marginBottom: 24,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 14,
+            flexWrap: 'wrap'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 260 }}>
+              <span style={{ fontSize: 24 }}>💡</span>
+              <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+                <strong style={{ color: '#d97706' }}>Add Your Gemini API Key for Personalized AI Feedback:</strong>
+                <span style={{ color: 'var(--text)', display: 'block', marginTop: 2 }}>
+                  Faculty API keys are no longer used for student evaluations. Without your personal key, you will only see static video and note recommendations.
+                </span>
+              </div>
+            </div>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setTab('profile')}
+              style={{ fontSize: 12, padding: '6px 14px', whiteSpace: 'nowrap' }}
+            >
+              ⚙️ Add Key in Profile
+            </button>
+          </div>
+        )}
 
         {/* Stats Row */}
         {responses.length > 0 && (
@@ -379,14 +425,183 @@ export default function StudentDashboard() {
         )}
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 24, background: 'var(--card)', padding: 6, borderRadius: 12, border: '1px solid var(--border)', width: 'fit-content' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 24, background: 'var(--card)', padding: 6, borderRadius: 12, border: '1px solid var(--border)', width: 'fit-content', flexWrap: 'wrap' }}>
+          <button id="tab-assigned" style={tabStyle(activeTab === 'assigned')} onClick={() => setTab('assigned')}>
+            🔔 Assigned Forms {notifications.filter(n => !n.isRead).length > 0 && (
+              <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', fontSize: 11, padding: '1px 6px', borderRadius: 10 }}>
+                {notifications.filter(n => !n.isRead).length}
+              </span>
+            )}
+          </button>
           <button id="tab-history" style={tabStyle(activeTab === 'history')} onClick={() => setTab('history')}>
-            📋 My Assessments
+            📋 My Assessments ({responses.length})
           </button>
           <button id="tab-profile" style={tabStyle(activeTab === 'profile')} onClick={() => setTab('profile')}>
-            ⚙️ Profile & API Key
+            ⚙️ Profile &amp; API Key
           </button>
         </div>
+
+        {/* ===================== ASSIGNED TAB ===================== */}
+        {activeTab === 'assigned' && (
+          <div>
+            {notifications.length === 0 ? (
+              <div className="card" style={{ textAlign: 'center', padding: '48px 24px' }}>
+                <div style={{ fontSize: 52, marginBottom: 12 }}>🔔</div>
+                <h3 style={{ marginBottom: 8 }}>No assigned assessments yet</h3>
+                <p style={{ color: 'var(--muted)', fontSize: 14, maxWidth: 500, margin: '0 auto 16px', lineHeight: 1.6 }}>
+                  Assessments published by your faculty for <strong>{profile?.studentClass || 'your class'} - Div {profile?.division || ''}</strong> will appear here automatically.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 14 }}>
+                {notifications.map((n) => {
+                  const form = n.form || {};
+                  const pastAttempts = responses.filter(r => (r.form?._id || r.form) === form._id);
+                  const latestAttempt = pastAttempts[0];
+                  const reattemptDays = typeof form.reattemptDays === 'number' ? form.reattemptDays : 0;
+
+                  let cooldownActive = false;
+                  let remainingText = '';
+                  if (latestAttempt && reattemptDays > 0) {
+                    const elapsedMs = Date.now() - new Date(latestAttempt.submittedAt).getTime();
+                    const requiredMs = reattemptDays * 24 * 60 * 60 * 1000;
+                    if (elapsedMs < requiredMs) {
+                      cooldownActive = true;
+                      const remainingMs = requiredMs - elapsedMs;
+                      const remDays = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
+                      const remHours = Math.ceil(remainingMs / (60 * 60 * 1000));
+                      remainingText = remDays > 1 ? `${remDays} days` : `${remHours} hrs`;
+                    }
+                  }
+
+                  const hasCompletedSingle = latestAttempt && reattemptDays === 0;
+
+                  return (
+                    <div
+                      key={n._id}
+                      className="card"
+                      style={{
+                        padding: '18px 20px',
+                        borderLeft: `4px solid ${!latestAttempt ? 'var(--accent)' : hasCompletedSingle ? '#22c55e' : cooldownActive ? '#f59e0b' : '#3b82f6'}`,
+                        background: !n.isRead ? 'rgba(79,110,247,0.03)' : undefined
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 10 }}>
+                        <div style={{ flex: 1, minWidth: 260 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                            <h3 style={{ fontSize: 16, margin: 0, fontWeight: 700 }}>{n.title || form.title || 'Assessment'}</h3>
+                            {!n.isRead && (
+                              <span style={{ background: 'rgba(79,110,247,0.15)', color: 'var(--accent)', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10 }}>
+                                NEW
+                              </span>
+                            )}
+                            {form.allowAnonymous && (
+                              <span style={{ background: 'rgba(107,114,128,0.1)', color: 'var(--muted)', fontSize: 11, padding: '2px 8px', borderRadius: 10 }}>
+                                🎭 Anonymous Allowed
+                              </span>
+                            )}
+                          </div>
+                          <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>
+                            {n.subject || form.subject} · By {n.facultyName || form.faculty?.name || 'Faculty'} · Assigned {new Date(n.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                          </p>
+                        </div>
+
+                        {/* Status Badge */}
+                        <div>
+                          {!latestAttempt ? (
+                            <span style={{ background: 'rgba(79,110,247,0.12)', color: 'var(--accent)', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 600 }}>
+                              🟢 Not Attempted
+                            </span>
+                          ) : hasCompletedSingle ? (
+                            <span style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 600 }}>
+                              ✅ Completed ({latestAttempt.overallScore}%)
+                            </span>
+                          ) : cooldownActive ? (
+                            <span style={{ background: 'rgba(245,158,11,0.12)', color: '#d97706', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 600 }}>
+                              ⏳ Cooldown ({remainingText} left)
+                            </span>
+                          ) : (
+                            <span style={{ background: 'rgba(59,130,246,0.12)', color: '#2563eb', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 600 }}>
+                              🔄 Retake Available (Attempt #{pastAttempts.length + 1})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Card Footer with Details & Action Button */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: 10 }}>
+                        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                          {pastAttempts.length > 0 ? (
+                            <>
+                              <strong>Past Attempts:</strong> {pastAttempts.length} · Best Score:{' '}
+                              <strong>{Math.max(...pastAttempts.map(p => p.overallScore))}%</strong>
+                              {reattemptDays > 0 ? ` · Retake allowed every ${reattemptDays}d` : ' · Single attempt only'}
+                            </>
+                          ) : (
+                            <span>{reattemptDays > 0 ? `Allowed retakes every ${reattemptDays} days` : 'Single attempt only'}</span>
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          {latestAttempt && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => setSelectedResponse(latestAttempt)}
+                              style={{ fontSize: 12, padding: '6px 14px' }}
+                            >
+                              👁️ View Past Result
+                            </button>
+                          )}
+
+                          {!latestAttempt && (
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              onClick={() => {
+                                markNotificationRead(n._id);
+                                nav(`/f/${form.uniqueLink}`);
+                              }}
+                              style={{ fontSize: 12, padding: '6px 16px' }}
+                            >
+                              🚀 Start Assessment →
+                            </button>
+                          )}
+
+                          {latestAttempt && !hasCompletedSingle && !cooldownActive && (
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              onClick={() => {
+                                markNotificationRead(n._id);
+                                nav(`/f/${form.uniqueLink}`);
+                              }}
+                              style={{ fontSize: 12, padding: '6px 16px', background: '#2563eb', borderColor: '#2563eb' }}
+                            >
+                              🔄 Re-attempt Assessment →
+                            </button>
+                          )}
+
+                          {latestAttempt && cooldownActive && (
+                            <button
+                              type="button"
+                              disabled
+                              className="btn btn-secondary"
+                              style={{ fontSize: 12, padding: '6px 14px', opacity: 0.6, cursor: 'not-allowed' }}
+                              title={`Cooldown active. You can attempt this assessment again in ${remainingText}.`}
+                            >
+                              ⏳ In Cooldown ({remainingText})
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ===================== HISTORY TAB ===================== */}
         {activeTab === 'history' && (
@@ -394,9 +609,9 @@ export default function StudentDashboard() {
             {responses.length === 0 ? (
               <div className="card" style={{ textAlign: 'center', padding: '48px 24px' }}>
                 <div style={{ fontSize: 52, marginBottom: 12 }}>📭</div>
-                <h3 style={{ marginBottom: 8 }}>No assessments yet</h3>
+                <h3 style={{ marginBottom: 8 }}>No assessments completed yet</h3>
                 <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 20 }}>
-                  You haven't submitted any assessments. Use the form link shared by your faculty.
+                  You haven't submitted any assessments yet. Check the Assigned Forms tab above to start.
                 </p>
                 {!profile?.hasApiKey && (
                   <p style={{ color: '#f59e0b', fontSize: 13 }}>
@@ -421,9 +636,21 @@ export default function StudentDashboard() {
                     <ScoreRing score={r.overallScore} />
 
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <h3 style={{ fontSize: 15, marginBottom: 4, fontWeight: 600 }}>
-                        {r.form?.title || 'Assessment'}
-                      </h3>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                        <h3 style={{ fontSize: 15, margin: 0, fontWeight: 600 }}>
+                          {r.form?.title || 'Assessment'}
+                        </h3>
+                        {r.attemptNumber && (
+                          <span style={{ fontSize: 11, background: 'rgba(79,110,247,0.1)', color: 'var(--accent)', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
+                            Attempt #{r.attemptNumber}
+                          </span>
+                        )}
+                        {r.isAnonymous && (
+                          <span style={{ fontSize: 11, background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
+                            🎭 Anonymous
+                          </span>
+                        )}
+                      </div>
                       <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 6 }}>
                         {r.form?.subject} · {r.form?.faculty?.name}
                       </p>
@@ -451,10 +678,12 @@ export default function StudentDashboard() {
             {/* Profile Info */}
             <div className="card">
               <h3 style={{ marginBottom: 16 }}>👤 Profile Information</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
                 {[
                   { label: 'Name', value: profile?.name },
                   { label: 'Email', value: profile?.email },
+                  { label: 'Class', value: profile?.studentClass || '—' },
+                  { label: 'Division', value: profile?.division || '—' },
                   { label: 'Roll Number', value: profile?.rollNo || '—' },
                   { label: 'Member Since', value: new Date(profile?.createdAt).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) }
                 ].map((f, i) => (
