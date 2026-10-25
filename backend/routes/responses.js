@@ -10,10 +10,96 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { decrypt } = require('../utils/encryption');
 const { autoEvaluatePendingAnswers } = require('../utils/evaluateDescriptive');
 
+/**
+ * Generates an AI Unit Study Plan & Diagnostic with estimated study hours for weak topics.
+ * Exclusively powered by the student's personal Gemini API key.
+ */
+async function generateUnitStudyPlan(studentModel, form, scoredAnswers, overallScore, overallLevel) {
+    if (!studentModel || !Array.isArray(scoredAnswers)) return null;
 
-// ======================================================
-// SUBMIT RESPONSE — Student Login Optional
-// ======================================================
+    try {
+        const topicMap = {};
+        scoredAnswers.forEach(a => {
+            const topic = a.topic && a.topic.trim() ? a.topic.trim() : 'General';
+            if (!topicMap[topic]) {
+                topicMap[topic] = { total: 0, scoreSum: 0 };
+            }
+            topicMap[topic].total++;
+            topicMap[topic].scoreSum += (Number(a.score) || 0);
+        });
+
+        const topicStats = Object.entries(topicMap).map(([topic, stat]) => ({
+            topic,
+            avgScore: stat.total > 0 ? Math.round(stat.scoreSum / stat.total) : 0
+        }));
+
+        const strongTopics = topicStats.filter(t => t.avgScore >= 60).map(t => t.topic);
+        const weakTopics = topicStats.filter(t => t.avgScore < 60).map(t => ({
+            topic: t.topic,
+            avgScore: t.avgScore
+        }));
+
+        const unitName = form.unit || form.title || 'this unit';
+        const prompt = `
+You are an expert college academic tutor evaluating a student's assessment performance in "${form.subject}" for the unit "${unitName}".
+Overall Unit Understanding: ${overallScore}% (${overallLevel})
+
+Topic-by-topic Performance in this Unit:
+${topicStats.map(t => `- "${t.topic}": ${t.avgScore}% accuracy`).join('\n')}
+
+Strong Topics (>= 60%): ${strongTopics.join(', ') || 'None identified yet'}
+Weak Topics (< 60%): ${weakTopics.map(w => `"${w.topic}" (${w.avgScore}%)`).join(', ') || 'None identified'}
+
+Instructions:
+1. Provide a concise 2-sentence summary of the student's understanding of "${unitName}".
+2. Identify their strongest areas in this unit.
+3. For each weak topic (or all topics if none are weak), calculate realistic study hours (e.g. 0.5, 1.0, 1.5, 2.0 hrs) needed to achieve mastery, based on their score gap.
+4. Give 1 practical, concrete revision action for each weak topic.
+5. Provide the total estimated study hours.
+
+Return ONLY valid JSON matching this exact structure:
+{
+  "unitSummary": "string",
+  "strongTopics": ["topic1"],
+  "weakTopics": [
+    {
+      "topic": "string",
+      "estimatedHours": 1.5,
+      "advice": "string"
+    }
+  ],
+  "totalEstimatedHours": 2.5
+}
+`;
+        const result = await studentModel.generateContent(prompt);
+        const text = result.response.text().replace(/```json/gi, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(text);
+
+        const weakList = Array.isArray(parsed.weakTopics) && parsed.weakTopics.length > 0
+            ? parsed.weakTopics
+            : weakTopics.map(w => ({
+                topic: w.topic,
+                estimatedHours: w.avgScore < 40 ? 2 : 1,
+                advice: `Review the core concepts and solve practical questions for ${w.topic}.`
+            }));
+
+        const totalHours = typeof parsed.totalEstimatedHours === 'number'
+            ? parsed.totalEstimatedHours
+            : weakList.reduce((sum, w) => sum + (Number(w.estimatedHours) || 1), 0);
+
+        return {
+            unitSummary: parsed.unitSummary || `Assessment completed for ${unitName} with ${overallScore}% overall score.`,
+            strongTopics: Array.isArray(parsed.strongTopics) ? parsed.strongTopics : strongTopics,
+            weakTopics: weakList,
+            totalEstimatedHours: Number(totalHours.toFixed(1)),
+            generatedAt: new Date()
+        };
+    } catch (err) {
+        console.warn('generateUnitStudyPlan error:', err.message);
+        return null;
+    }
+}
+
 
 // ======================================================
 // CHECK ACCESS & COOLDOWN STATUS (Student Only)
@@ -728,6 +814,14 @@ Use exactly this format:
 
         const recommendation = '';
 
+        // ======================================================
+        // AI UNIT STUDY PLAN & ESTIMATED STUDY HOURS
+        // (Exclusively generated when student has configured their personal Gemini API key)
+        // ======================================================
+        let aiStudyPlan = null;
+        if (aiKeySource === 'student' && model) {
+            aiStudyPlan = await generateUnitStudyPlan(model, form, scored, overallScore, overallLevel);
+        }
 
         // ======================================================
         // SAVE RESPONSE (linked to student account)
@@ -754,7 +848,9 @@ Use exactly this format:
 
                 overallScore,
 
-                overallLevel
+                overallLevel,
+
+                aiStudyPlan
             });
 
 
@@ -800,16 +896,18 @@ Use exactly this format:
 
             recommendation,
 
+            aiStudyPlan,
+
             learningResources:
                 uniqueResources,
 
             responseId:
                 response._id,
 
-            hasStudentApiKey: !!model,
+            hasStudentApiKey: aiKeySource === 'student',
 
-            apiKeyNotice: !model
-                ? '💡 Add your personal Gemini API key in your Student Dashboard to unlock AI-powered descriptive evaluation and personalized learning recommendations.'
+            apiKeyNotice: aiKeySource !== 'student'
+                ? '💡 Add your personal Gemini API key in Student Dashboard Settings to unlock AI Unit Study Plans, study hour estimations, and interactive practice questions on weak topics.'
                 : ''
         });
 
@@ -839,7 +937,7 @@ router.get('/my-responses', studentAuth, async (req, res) => {
             .sort({ submittedAt: -1 })
             .populate({
                 path: 'form',
-                select: 'title subject topicResources questions faculty',
+                select: 'title subject unit topicResources questions faculty',
                 populate: {
                     path: 'faculty',
                     select: 'name department geminiApiKey'
@@ -869,7 +967,7 @@ router.get('/my-responses/:id', studentAuth, async (req, res) => {
             student: req.student.id
         }).populate({
             path: 'form',
-            select: 'title subject topicResources questions faculty',
+            select: 'title subject unit topicResources questions faculty',
             populate: {
                 path: 'faculty',
                 select: 'name department geminiApiKey'
@@ -885,6 +983,139 @@ router.get('/my-responses/:id', studentAuth, async (req, res) => {
         res.json(response);
     } catch (err) {
         res.status(500).json({ message: err.message });
+    }
+});
+
+
+// ======================================================
+// GENERATE / REGENERATE AI UNIT STUDY PLAN ON DEMAND (student's own)
+// Requires student's personal Gemini API key
+// ======================================================
+router.post('/my-responses/:id/study-plan', studentAuth, async (req, res) => {
+    try {
+        const student = await Student.findById(req.student.id);
+        if (!student || !student.geminiApiKey) {
+            return res.status(403).json({
+                message: 'Personal Gemini API key required. Please configure your key in Dashboard Settings to unlock AI unit study plans.'
+            });
+        }
+
+        const decKey = decrypt(student.geminiApiKey);
+        if (!decKey) {
+            return res.status(400).json({ message: 'Invalid or corrupted Gemini API key.' });
+        }
+
+        const genAI = new GoogleGenerativeAI(decKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite' });
+
+        const response = await Response.findOne({
+            _id: req.params.id,
+            student: req.student.id
+        }).populate('form');
+
+        if (!response) {
+            return res.status(404).json({ message: 'Response not found' });
+        }
+
+        const studyPlan = await generateUnitStudyPlan(
+            model,
+            response.form,
+            response.answers,
+            response.overallScore,
+            response.overallLevel
+        );
+
+        if (!studyPlan) {
+            return res.status(500).json({ message: 'Failed to generate study plan. Please verify your Gemini API key.' });
+        }
+
+        response.aiStudyPlan = studyPlan;
+        await response.save();
+
+        res.json({
+            message: 'Study plan generated successfully!',
+            aiStudyPlan: studyPlan
+        });
+    } catch (err) {
+        console.error('Study plan generation error:', err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+// ======================================================
+// GENERATE 3 TARGETED PRACTICE MCQs ON WEAK TOPIC (student only)
+// Requires student's personal Gemini API key
+// ======================================================
+router.post('/practice-questions', studentAuth, async (req, res) => {
+    try {
+        const { topic, subject, unit } = req.body;
+        if (!topic || !String(topic).trim()) {
+            return res.status(400).json({ message: 'Topic is required to generate practice questions' });
+        }
+
+        const student = await Student.findById(req.student.id);
+        if (!student || !student.geminiApiKey) {
+            return res.status(403).json({
+                message: 'Personal Gemini API key required. Add your free Gemini API key in Student Dashboard Settings to unlock targeted AI practice questions.'
+            });
+        }
+
+        const decKey = decrypt(student.geminiApiKey);
+        if (!decKey) {
+            return res.status(400).json({ message: 'Invalid or corrupted Gemini API key.' });
+        }
+
+        const genAI = new GoogleGenerativeAI(decKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite' });
+
+        const cleanTopic = String(topic).trim();
+        const prompt = `
+You are an expert university professor creating practice exercises for undergraduate engineering students.
+Subject: ${subject || 'Engineering'}
+Unit: ${unit || 'Curriculum Unit'}
+Topic to strengthen: "${cleanTopic}"
+
+Generate exactly 3 educational multiple-choice practice questions (MCQs) designed specifically to test and reinforce conceptual understanding of "${cleanTopic}".
+For each question:
+- Make the question clear, engaging, and directly focused on ${cleanTopic}.
+- Provide exactly 4 options.
+- Indicate the 0-based index of the correct option (0, 1, 2, or 3).
+- Provide a clear, educational explanation of why the correct answer is right and common pitfalls to avoid.
+- Provide a 1-sentence "keyTakeaway".
+
+Return ONLY valid JSON matching this exact structure:
+{
+  "topic": "${cleanTopic}",
+  "questions": [
+    {
+      "id": 1,
+      "question": "string",
+      "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
+      "correctIndex": 0,
+      "explanation": "string",
+      "keyTakeaway": "string"
+    }
+  ]
+}
+`;
+        const result = await model.generateContent(prompt);
+        const text = result.response.text().replace(/```json/gi, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(text);
+
+        if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+            return res.status(500).json({ message: 'AI returned an invalid question format. Please try again.' });
+        }
+
+        res.json({
+            topic: cleanTopic,
+            subject: subject || '',
+            unit: unit || '',
+            questions: parsed.questions
+        });
+    } catch (err) {
+        console.error('Practice questions error:', err);
+        res.status(500).json({ message: err.message || 'Failed to generate practice questions' });
     }
 });
 

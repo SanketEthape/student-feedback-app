@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import StudentNavbar from '../components/StudentNavbar';
 import { studentApi } from '../api';
+import PracticeModal from '../components/PracticeModal';
 
 // =============================================
 // LEVEL BADGE
@@ -43,9 +44,34 @@ const ScoreRing = ({ score }) => {
 // =============================================
 // FULL RESULT MODAL
 // =============================================
-const ResultModal = ({ response, onClose }) => {
+const ResultModal = ({
+  response,
+  onClose,
+  hasApiKey,
+  onNavigateToSettings,
+  onOpenPractice,
+  onPlanGenerated
+}) => {
   if (!response) return null;
   const form = response.form || {};
+
+  const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [localStudyPlan, setLocalStudyPlan] = useState(response.aiStudyPlan);
+  const [planErr, setPlanErr] = useState('');
+
+  const generatePlan = async () => {
+    setGeneratingPlan(true);
+    setPlanErr('');
+    try {
+      const { data } = await studentApi.post(`/responses/my-responses/${response._id}/study-plan`);
+      setLocalStudyPlan(data.aiStudyPlan);
+      if (onPlanGenerated) onPlanGenerated(response._id, data.aiStudyPlan);
+    } catch (err) {
+      setPlanErr(err?.response?.data?.message || 'Failed to generate study plan');
+    } finally {
+      setGeneratingPlan(false);
+    }
+  };
 
   return (
     <div style={{
@@ -64,7 +90,7 @@ const ResultModal = ({ response, onClose }) => {
           <div>
             <h2 style={{ marginBottom: 4 }}>{form.title || 'Assessment'}</h2>
             <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-              {form.subject} · {form.faculty?.name} · {new Date(response.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {form.subject} {form.unit ? `· ${form.unit}` : ''} · {form.faculty?.name} · {new Date(response.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
             </p>
           </div>
           <button onClick={onClose} style={{
@@ -88,21 +114,158 @@ const ResultModal = ({ response, onClose }) => {
           ))}
         </div>
 
-        {/* Level + Recommendation */}
+        {/* Level */}
         <div style={{ marginBottom: 16 }}>
           <LevelBadge level={response.overallLevel} />
         </div>
 
-        {response.recommendation && (
+        {/* ====================================================== */}
+        {/* FEATURE 1: AI UNIT STUDY PLAN & ESTIMATED STUDY HOURS   */}
+        {/* ====================================================== */}
+        {localStudyPlan ? (
           <div style={{
-            background: 'rgba(79,110,247,0.06)', border: '1px solid rgba(79,110,247,0.15)',
-            borderLeft: '3px solid var(--accent)', borderRadius: 10, padding: '16px 18px', marginBottom: 20
+            background: 'linear-gradient(135deg, rgba(79,110,247,0.06) 0%, rgba(16,185,129,0.06) 100%)',
+            border: '1px solid rgba(79,110,247,0.2)',
+            borderRadius: 12,
+            padding: '18px 20px',
+            marginBottom: 20
           }}>
-            <strong>💡 Personalised Recommendation</strong>
-            <p style={{ marginTop: 8, lineHeight: 1.7, color: 'var(--text)', fontSize: 14 }}>
-              {response.recommendation}
-            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 22 }}>🤖</span>
+                <strong style={{ fontSize: 15, color: 'var(--text)' }}>AI Unit Diagnostic &amp; Study Plan</strong>
+              </div>
+              <span style={{
+                background: 'rgba(16, 185, 129, 0.12)',
+                color: '#047857',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                padding: '3px 10px',
+                borderRadius: 16,
+                fontSize: 12,
+                fontWeight: 700
+              }}>
+                ⏱️ Study Time Needed: ~{localStudyPlan.totalEstimatedHours || 1} hrs
+              </span>
+            </div>
+
+            {localStudyPlan.unitSummary && (
+              <p style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text)', marginBottom: 14 }}>
+                {localStudyPlan.unitSummary}
+              </p>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+              {/* Strong Areas */}
+              <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: 8, padding: '12px 14px' }}>
+                <div style={{ fontWeight: 700, fontSize: 12, color: '#047857', marginBottom: 6 }}>
+                  🟢 Strong Concepts in this Unit
+                </div>
+                {localStudyPlan.strongTopics && localStudyPlan.strongTopics.length > 0 ? (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {localStudyPlan.strongTopics.map((st, i) => (
+                      <span key={i} style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
+                        ✓ {st}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>Continue practicing to build strength in this unit.</span>
+                )}
+              </div>
+
+              {/* Weak Areas & Study Hours */}
+              <div style={{ background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 8, padding: '12px 14px' }}>
+                <div style={{ fontWeight: 700, fontSize: 12, color: '#b91c1c', marginBottom: 6 }}>
+                  🔴 Weak Concepts &amp; Required Study Hours
+                </div>
+                {localStudyPlan.weakTopics && localStudyPlan.weakTopics.length > 0 ? (
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {localStudyPlan.weakTopics.map((wt, i) => (
+                      <div key={i} style={{ background: '#fff', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, padding: '8px 10px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3, flexWrap: 'wrap', gap: 4 }}>
+                          <strong style={{ fontSize: 12, color: '#b91c1c' }}>{wt.topic}</strong>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ background: 'rgba(239,68,68,0.1)', color: '#dc2626', padding: '1px 6px', borderRadius: 10, fontSize: 10, fontWeight: 700 }}>
+                              ⏳ ~{wt.estimatedHours || 1} hr{wt.estimatedHours > 1 ? 's' : ''}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ fontSize: 10, padding: '2px 6px', borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                              onClick={() => onOpenPractice && onOpenPractice(wt.topic, form.subject, form.unit || form.title)}
+                            >
+                              🎯 Practice 3 Qs
+                            </button>
+                          </div>
+                        </div>
+                        {wt.advice && (
+                          <p style={{ margin: 0, fontSize: 11, color: 'var(--muted)', lineHeight: 1.4 }}>
+                            {wt.advice}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <span style={{ fontSize: 12, color: '#047857', fontWeight: 600 }}>🎉 No weak concepts detected in this unit!</span>
+                )}
+              </div>
+            </div>
           </div>
+        ) : (
+          /* LOCKED / GENERATE BANNER */
+          hasApiKey ? (
+            <div style={{
+              background: 'rgba(79,110,247,0.06)',
+              border: '1px solid rgba(79,110,247,0.2)',
+              borderRadius: 12,
+              padding: '16px 20px',
+              marginBottom: 20
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                <div>
+                  <strong style={{ fontSize: 14 }}>✨ AI Unit Diagnostic &amp; Study Hours Planner</strong>
+                  <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--muted)' }}>
+                    Calculate exact study hours needed for weak topics and get strong/weak concepts breakdown.
+                  </p>
+                  {planErr && <p style={{ color: '#ef4444', fontSize: 12, margin: '4px 0 0' }}>{planErr}</p>}
+                </div>
+                <button
+                  className="btn btn-primary"
+                  style={{ fontSize: 12, padding: '6px 14px' }}
+                  onClick={generatePlan}
+                  disabled={generatingPlan}
+                >
+                  {generatingPlan ? '🤖 Generating...' : '✨ Generate AI Study Plan'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              background: 'rgba(245, 158, 11, 0.08)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              borderRadius: 12,
+              padding: '16px 20px',
+              marginBottom: 20
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 20 }}>✨</span>
+                <strong style={{ color: '#d97706', fontSize: 14 }}>
+                  Unlock AI Unit Study Plan &amp; Practice Questions:
+                </strong>
+              </div>
+              <p style={{ margin: '4px 0 10px', fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>
+                Add your free Gemini API key to calculate <strong>how many study hours</strong> you need on weak topics, see your <strong>Strong vs. Weak Areas</strong> for this unit, and practice interactive AI questions on any concept.
+              </p>
+              <button
+                className="btn btn-secondary"
+                style={{ fontSize: 12, padding: '5px 12px' }}
+                onClick={onNavigateToSettings}
+              >
+                ⚙️ Add Gemini API Key in Profile →
+              </button>
+            </div>
+          )
         )}
 
         {/* MCQ Answers */}
@@ -191,20 +354,38 @@ const ResultModal = ({ response, onClose }) => {
                     <div key={i} className="card" style={{ borderLeft: '4px solid var(--accent)', padding: '12px 16px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                         <span style={{ fontWeight: 700, fontSize: 14 }}>📖 {topic}</span>
-                        {videoUrl ? (
-                          <a
-                            href={videoUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="btn btn-primary"
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onOpenPractice) {
+                                onOpenPractice(topic, form.subject || '', form.unit || '');
+                              }
+                            }}
+                            className="btn btn-outline"
                             style={{
                               fontSize: 12, padding: '5px 12px',
-                              textDecoration: 'none', background: '#059669', borderColor: '#059669'
+                              borderColor: 'var(--accent)', color: 'var(--accent)',
+                              display: 'inline-flex', alignItems: 'center', gap: 5
                             }}
                           >
-                            🎥 Watch Faculty Recommended Video
-                          </a>
-                        ) : null}
+                            🎯 Practice 3 Questions
+                          </button>
+                          {videoUrl ? (
+                            <a
+                              href={videoUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn btn-primary"
+                              style={{
+                                fontSize: 12, padding: '5px 12px',
+                                textDecoration: 'none', background: '#059669', borderColor: '#059669'
+                              }}
+                            >
+                              🎥 Watch Faculty Recommended Video
+                            </a>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                   );
@@ -230,6 +411,12 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setTab] = useState('assigned'); // 'assigned' | 'history' | 'profile'
   const [selectedResponse, setSelectedResponse] = useState(null);
+
+  // Interactive Practice Modal state
+  const [practiceTopic, setPracticeTopic] = useState('');
+  const [practiceSubject, setPracticeSubject] = useState('');
+  const [practiceUnit, setPracticeUnit] = useState('');
+  const [practiceModalOpen, setPracticeModalOpen] = useState(false);
 
   // Profile Edit form state
   const [editingProfile, setEditingProfile] = useState(false);
@@ -445,11 +632,11 @@ export default function StudentDashboard() {
             flexWrap: 'wrap'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 260 }}>
-              <span style={{ fontSize: 24 }}>💡</span>
+              <span style={{ fontSize: 24 }}>🚀</span>
               <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                <strong style={{ color: '#d97706' }}>Add Your Gemini API Key for Personalized AI Feedback:</strong>
+                <strong style={{ color: '#d97706' }}>Unlock AI Study Plans & Interactive Practice:</strong>
                 <span style={{ color: 'var(--text)', display: 'block', marginTop: 2 }}>
-                  Faculty API keys are no longer used for student evaluations. Without your personal key, you will only see static video and note recommendations.
+                  Connect your free Gemini API key to unlock <strong>Unit Diagnostic & Study Hours Planning</strong>, <strong>🎯 3-Question Practice on Weak Topics</strong>, and detailed AI feedback.
                 </span>
               </div>
             </div>
@@ -458,7 +645,7 @@ export default function StudentDashboard() {
               onClick={() => setTab('profile')}
               style={{ fontSize: 12, padding: '6px 14px', whiteSpace: 'nowrap' }}
             >
-              ⚙️ Add Key in Profile
+              ⚙️ Connect Free API Key
             </button>
           </div>
         )}
@@ -976,10 +1163,16 @@ export default function StudentDashboard() {
                 )}
               </div>
 
-              <p style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.7, marginBottom: 18 }}>
-                Your personal Gemini API key is used for AI evaluation of your descriptive answers.
-                This means your assessment uses <strong>your own free API quota</strong> — not the faculty's tokens.
-                Get a free key from{' '}
+              <p style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.7, marginBottom: 14 }}>
+                Your personal Gemini API key unlocks exclusive study tools using <strong>your own free API quota</strong> — never using faculty tokens:
+              </p>
+              <ul style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.8, marginBottom: 18, paddingLeft: 20 }}>
+                <li>📊 <strong>AI Unit Diagnostic & Study Hours Planner:</strong> Instant breakdown of strong/weak areas and estimated study hours needed.</li>
+                <li>🎯 <strong>Targeted 3-Question Practice:</strong> On-demand interactive practice questions on your weak topics with explanations.</li>
+                <li>✍️ <strong>AI Descriptive Answer Evaluation:</strong> Instant grading and detailed feedback on your written answers.</li>
+              </ul>
+              <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 18 }}>
+                Get a 100% free key from{' '}
                 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>
                   Google AI Studio →
                 </a>
@@ -990,7 +1183,7 @@ export default function StudentDashboard() {
                   background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)',
                   borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13
                 }}>
-                  ✅ You have an active API key. Descriptive answers will be evaluated using your Gemini quota.
+                  ✅ You have an active API key. All AI diagnostic, practice questions, and descriptive grading tools are enabled!
                 </div>
               )}
 
@@ -1066,8 +1259,40 @@ export default function StudentDashboard() {
 
       {/* Full Result Modal */}
       {selectedResponse && (
-        <ResultModal response={selectedResponse} onClose={() => setSelectedResponse(null)} />
+        <ResultModal
+          response={selectedResponse}
+          onClose={() => setSelectedResponse(null)}
+          hasApiKey={!!profile?.hasApiKey}
+          onNavigateToSettings={() => {
+            setSelectedResponse(null);
+            setTab('profile');
+          }}
+          onOpenPractice={(topic, subject, unit) => {
+            setPracticeTopic(topic);
+            setPracticeSubject(subject);
+            setPracticeUnit(unit);
+            setPracticeModalOpen(true);
+          }}
+          onPlanGenerated={(responseId, plan) => {
+            setResponses(prev => prev.map(r => r._id === responseId ? { ...r, aiStudyPlan: plan } : r));
+            setSelectedResponse(prev => prev?._id === responseId ? { ...prev, aiStudyPlan: plan } : prev);
+          }}
+        />
       )}
+
+      {/* Interactive Practice Modal */}
+      <PracticeModal
+        isOpen={practiceModalOpen}
+        onClose={() => setPracticeModalOpen(false)}
+        topic={practiceTopic}
+        subject={practiceSubject}
+        unit={practiceUnit}
+        hasApiKey={!!profile?.hasApiKey}
+        onNavigateToSettings={() => {
+          setPracticeModalOpen(false);
+          setTab('profile');
+        }}
+      />
     </>
   );
 }

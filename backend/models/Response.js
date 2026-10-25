@@ -167,6 +167,19 @@ const ResponseSchema = new mongoose.Schema({
         default: 'Needs Improvement'
     },
 
+    // AI Unit Study Plan & Diagnostics (Exclusive to students with personal Gemini API Key)
+    aiStudyPlan: {
+        unitSummary: { type: String, default: '' },
+        strongTopics: [{ type: String }],
+        weakTopics: [{
+            topic: { type: String },
+            estimatedHours: { type: Number, default: 1 },
+            advice: { type: String }
+        }],
+        totalEstimatedHours: { type: Number, default: 0 },
+        generatedAt: { type: Date }
+    },
+
     submittedAt: {
         type: Date,
         default: Date.now

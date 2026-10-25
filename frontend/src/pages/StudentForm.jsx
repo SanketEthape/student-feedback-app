@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../api";
 import { studentApi } from "../api";
+import PracticeModal from "../components/PracticeModal";
 
 export default function StudentForm() {
   const { link } = useParams();
@@ -19,6 +20,15 @@ export default function StudentForm() {
 
   const [answers, setAnswers] = useState({});
   const [loading, setLoading] = useState(false);
+
+  // Practice Modal State
+  const [practiceTopic, setPracticeTopic] = useState("");
+  const [practiceModalOpen, setPracticeModalOpen] = useState(false);
+
+  const openPracticeModal = (topicName) => {
+    setPracticeTopic(topicName);
+    setPracticeModalOpen(true);
+  };
 
   // form | done
   const [step, setStep] = useState("form");
@@ -628,37 +638,125 @@ export default function StudentForm() {
               </div>
             </div>
 
-            {/* PERSONALIZED RECOMMENDATION */}
-
-            {result.recommendation && (
+            {/* ====================================================== */}
+            {/* FEATURE 1: AI UNIT STUDY PLAN & ESTIMATED STUDY HOURS   */}
+            {/* (Exclusive for students with personal Gemini API key)    */}
+            {/* ====================================================== */}
+            {result.aiStudyPlan ? (
               <div
                 className="card"
                 style={{
                   textAlign: "left",
-                  background: "rgba(79,110,247,0.06)",
-                  border: "1px solid rgba(79,110,247,0.15)",
-                  borderRadius: 12,
-                  padding: "20px 24px",
-                  borderLeft: "3px solid var(--accent)",
-                  marginBottom: 20,
+                  background: "linear-gradient(135deg, rgba(79,110,247,0.05) 0%, rgba(16,185,129,0.05) 100%)",
+                  border: "1px solid rgba(79,110,247,0.2)",
+                  borderRadius: 14,
+                  padding: "22px 24px",
+                  marginBottom: 20
                 }}
               >
-                <h3 style={{ marginBottom: 10 }}>
-                  💡 Personalized Study Recommendation
-                </h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 24 }}>🤖</span>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: 17, color: 'var(--text)' }}>
+                        AI Unit Diagnostic &amp; Study Hours Planner
+                      </h3>
+                      <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--muted)' }}>
+                        Unit: <strong>{form?.unit || form?.title}</strong> · Powered by your personal Gemini key
+                      </p>
+                    </div>
+                  </div>
+                  <span style={{
+                    background: 'rgba(16, 185, 129, 0.12)',
+                    color: '#047857',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    padding: '6px 14px',
+                    borderRadius: 20,
+                    fontSize: 13,
+                    fontWeight: 700
+                  }}>
+                    ⏱️ Total Study Required: ~{result.aiStudyPlan.totalEstimatedHours || 1} hrs
+                  </span>
+                </div>
 
-                <p
-                  style={{
-                    lineHeight: 1.8,
-                    color: "var(--text)",
-                  }}
-                >
-                  {result.recommendation}
-                </p>
+                {/* Unit Understanding Summary */}
+                {result.aiStudyPlan.unitSummary && (
+                  <p style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--text)', marginBottom: 16 }}>
+                    {result.aiStudyPlan.unitSummary}
+                  </p>
+                )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+                  {/* Strong Areas in this Unit */}
+                  <div style={{
+                    background: 'rgba(16, 185, 129, 0.06)',
+                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                    borderRadius: 10,
+                    padding: '14px 16px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontWeight: 700, fontSize: 13, color: '#047857' }}>
+                      <span>🟢</span> Strong Concepts in this Unit
+                    </div>
+                    {result.aiStudyPlan.strongTopics && result.aiStudyPlan.strongTopics.length > 0 ? (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {result.aiStudyPlan.strongTopics.map((st, i) => (
+                          <span key={i} style={{ background: '#dcfce7', color: '#166534', padding: '3px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
+                            ✓ {st}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 12, color: 'var(--muted)' }}>Keep practicing to develop strong mastery in this unit.</span>
+                    )}
+                  </div>
+
+                  {/* Weak Areas & Study Hours Allocation */}
+                  <div style={{
+                    background: 'rgba(239, 68, 68, 0.06)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    borderRadius: 10,
+                    padding: '14px 16px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontWeight: 700, fontSize: 13, color: '#b91c1c' }}>
+                      <span>🔴</span> Weak Concepts &amp; Recommended Study Time
+                    </div>
+                    {result.aiStudyPlan.weakTopics && result.aiStudyPlan.weakTopics.length > 0 ? (
+                      <div style={{ display: 'grid', gap: 10 }}>
+                        {result.aiStudyPlan.weakTopics.map((wt, i) => (
+                          <div key={i} style={{ background: '#fff', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', gap: 6 }}>
+                              <strong style={{ fontSize: 13, color: '#b91c1c' }}>{wt.topic}</strong>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ background: 'rgba(239,68,68,0.1)', color: '#dc2626', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>
+                                  ⏳ ~{wt.estimatedHours || 1} hr{wt.estimatedHours > 1 ? 's' : ''} study
+                                </span>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{ fontSize: 11, padding: '3px 8px', borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                                  onClick={() => openPracticeModal(wt.topic)}
+                                >
+                                  🎯 Practice 3 Questions
+                                </button>
+                              </div>
+                            </div>
+                            {wt.advice && (
+                              <p style={{ margin: 0, fontSize: 12, color: 'var(--muted)', lineHeight: 1.4 }}>
+                                {wt.advice}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 12, color: '#047857', fontWeight: 600 }}>🎉 No weak concepts detected! You scored well across all unit topics.</span>
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
+            ) : null}
 
-            {/* GEMINI API KEY NOTICE IF NO KEY PROVIDED */}
+            {/* LOCKED PROMOTION IF STUDENT DOES NOT HAVE GEMINI API KEY */}
             {!result.hasStudentApiKey && (
               <div
                 className="card"
@@ -666,28 +764,33 @@ export default function StudentForm() {
                   textAlign: "left",
                   background: "rgba(245, 158, 11, 0.08)",
                   border: "1px solid rgba(245, 158, 11, 0.3)",
-                  borderRadius: 12,
-                  padding: "18px 22px",
+                  borderRadius: 14,
+                  padding: "20px 24px",
                   borderLeft: "4px solid #f59e0b",
                   marginBottom: 20,
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                  <span style={{ fontSize: 20 }}>💡</span>
-                  <h3 style={{ margin: 0, fontSize: 15, color: "#d97706" }}>
-                    Personalized AI Evaluation Skipped
-                  </h3>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <span style={{ fontSize: 24 }}>✨</span>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 16, color: "#d97706" }}>
+                      Unlock AI Unit Diagnostics &amp; Interactive Practice Questions
+                    </h3>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--muted)' }}>
+                      Exclusive features available when you connect your free personal Gemini API key
+                    </p>
+                  </div>
                 </div>
-                <p style={{ margin: "4px 0 10px", lineHeight: 1.6, color: "var(--text)", fontSize: 13 }}>
-                  Faculty API keys are protected and not used for student evaluations. To get instant AI descriptive evaluations and personalized learning recommendations on future attempts, add your free Gemini API key.
+                <p style={{ margin: "6px 0 14px", lineHeight: 1.6, color: "var(--text)", fontSize: 13 }}>
+                  Connect your personal Gemini API key to automatically calculate <strong>how many study hours</strong> you need to spend on weak topics, receive a clear breakdown of your <strong>Strong Areas vs. Weak Areas</strong> for this unit, and practice interactive AI questions on any concept you struggled with!
                 </p>
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className="btn btn-primary"
                   onClick={() => nav("/student/dashboard")}
-                  style={{ fontSize: 12, padding: "5px 12px" }}
+                  style={{ fontSize: 13, padding: "8px 16px" }}
                 >
-                  ⚙️ Add Gemini API Key in Dashboard →
+                  🔑 Add Free Gemini API Key in Settings →
                 </button>
               </div>
             )}
@@ -894,9 +997,9 @@ export default function StudentForm() {
                               </div>
                             )}
 
-                          {/* RECOMMENDED VIDEO - ONLY SHOWN IF FACULTY ADDED A VIDEO LINK */}
-                          {resource.videoUrl ? (
-                            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                          {/* RECOMMENDED VIDEO & TARGETED AI PRACTICE */}
+                          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: 12 }}>
+                            {resource.videoUrl ? (
                               <a
                                 href={resource.videoUrl}
                                 target="_blank"
@@ -906,13 +1009,23 @@ export default function StudentForm() {
                                   display: "inline-block",
                                   textDecoration: "none",
                                   background: "#059669",
-                                  borderColor: "#059669"
+                                  borderColor: "#059669",
+                                  fontSize: 13
                                 }}
                               >
                                 🎥 Watch Faculty Recommended Video
                               </a>
-                            </div>
-                          ) : null}
+                            ) : null}
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                              onClick={() => openPracticeModal(resource.topic)}
+                            >
+                              <span>🎯</span>
+                              <span>Practice 3 Questions</span>
+                            </button>
+                          </div>
                         </div>
                       )
                     )}
@@ -935,6 +1048,17 @@ export default function StudentForm() {
             </div>
           </div>
         )}
+
+        {/* TARGETED AI PRACTICE MODAL */}
+        <PracticeModal
+          isOpen={practiceModalOpen}
+          onClose={() => setPracticeModalOpen(false)}
+          topic={practiceTopic}
+          subject={form?.subject}
+          unit={form?.unit || form?.title}
+          hasApiKey={!!result?.hasStudentApiKey}
+          onNavigateToSettings={() => nav("/student/dashboard")}
+        />
       </div>
     </div>
   );
