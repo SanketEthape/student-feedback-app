@@ -261,6 +261,8 @@ router.post('/submit/:link', studentAuth, async (req, res) => {
         }
 
         // Anonymity Handling
+        // If form.allowAnonymous is true, response is submitted anonymously to faculty.
+        // If form.allowAnonymous is false, anonymous submissions are rejected if requested.
         const wantsAnonymous = !!bodyAnonymous;
         if (wantsAnonymous && !form.allowAnonymous) {
             return res.status(400).json({
@@ -268,8 +270,8 @@ router.post('/submit/:link', studentAuth, async (req, res) => {
             });
         }
 
-        const isAnonymous = wantsAnonymous && form.allowAnonymous;
-        const studentName = isAnonymous ? 'Anonymous' : (student.name || 'Anonymous');
+        const isAnonymous = !!form.allowAnonymous || wantsAnonymous;
+        const studentName = isAnonymous ? 'Anonymous Student' : (student.name || 'Anonymous Student');
         const rollNo = isAnonymous ? 'Hidden' : (student.rollNo || '');
 
         // --------------------------------------------------
@@ -941,7 +943,24 @@ router.get(
                 await autoEvaluatePendingAnswers(r);
             }
 
-            res.json(responses);
+            // Enforce anonymity policy:
+            // When form.allowAnonymous is true, student identity (Name & Roll No) MUST be hidden from faculty.
+            // Student identity is revealed if and only if form.allowAnonymous is false.
+            const sanitizedResponses = responses.map(r => {
+                const doc = r.toObject ? r.toObject() : { ...r };
+                if (form.allowAnonymous || doc.isAnonymous) {
+                    if (doc.recommendation && doc.studentName && doc.studentName !== 'Anonymous' && doc.studentName !== 'Anonymous Student') {
+                        doc.recommendation = doc.recommendation.replace(new RegExp(`Great work, ${doc.studentName}!`, 'g'), 'Great work, Student!');
+                    }
+                    doc.studentName = 'Anonymous Student';
+                    doc.rollNo = '';
+                    doc.student = null;
+                    doc.isAnonymous = true;
+                }
+                return doc;
+            });
+
+            res.json(sanitizedResponses);
 
         }
 

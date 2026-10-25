@@ -40,6 +40,9 @@ export default function StudentForm() {
       studentApi.get(`/forms/link/${link}`)
     ]).then(([accessRes, formRes]) => {
       setForm(formRes.data);
+      if (formRes.data.allowAnonymous) {
+        setIsAnonymous(true);
+      }
       setStudentInfo(accessRes.data.student);
       setAttemptNumber(accessRes.data.attemptNumber || 1);
     }).catch((error) => {
@@ -285,30 +288,22 @@ export default function StudentForm() {
             </div>
 
             {form.allowAnonymous ? (
-              <label style={{
+              <div style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
-                cursor: "pointer",
-                background: isAnonymous ? "rgba(239,68,68,0.08)" : "var(--bg)",
+                background: "rgba(16,185,129,0.08)",
                 padding: "8px 14px",
                 borderRadius: 8,
-                border: `1px solid ${isAnonymous ? "rgba(239,68,68,0.3)" : "var(--border)"}`,
-                transition: "all 0.15s"
+                border: "1px solid rgba(16,185,129,0.3)"
               }}>
-                <input
-                  type="checkbox"
-                  checked={isAnonymous}
-                  onChange={e => setIsAnonymous(e.target.checked)}
-                  style={{ accentColor: "var(--accent)", width: 16, height: 16 }}
-                />
-                <span style={{ fontSize: 13, fontWeight: 600, color: isAnonymous ? "#ef4444" : "var(--text)" }}>
-                  🎭 Submit Anonymously
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#059669" }}>
+                  🎭 Anonymous Submission Active (Identity Hidden from Faculty)
                 </span>
-              </label>
+              </div>
             ) : (
               <span style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>
-                Verified submission (Faculty disabled anonymous responses)
+                Verified submission (Faculty disabled anonymous responses — Name &amp; Roll No will be visible)
               </span>
             )}
           </div>

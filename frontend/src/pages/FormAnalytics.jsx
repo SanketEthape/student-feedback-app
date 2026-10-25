@@ -1251,13 +1251,22 @@ export default function FormAnalytics() {
                             <div key={r._id} className="card">
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
                                     <div>
-                                        <strong>{r.studentName}</strong>
-                                        {r.rollNo && <span style={{ color: 'var(--muted)', fontSize: 13, marginLeft: 8 }}>Roll: {r.rollNo}</span>}
-                                        {r.isAnonymous && (
-                                            <span style={{ marginLeft: 8, fontSize: 11, background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
-                                                🎭 Anonymous
-                                            </span>
-                                        )}
+                                        {(() => {
+                                            const isMasked = !!form?.allowAnonymous || !!r.isAnonymous || r.studentName === 'Anonymous' || r.studentName === 'Anonymous Student';
+                                            return (
+                                                <>
+                                                    <strong>{isMasked ? 'Anonymous Student' : r.studentName}</strong>
+                                                    {!isMasked && r.rollNo && r.rollNo !== 'Hidden' && (
+                                                        <span style={{ color: 'var(--muted)', fontSize: 13, marginLeft: 8 }}>Roll: {r.rollNo}</span>
+                                                    )}
+                                                    {isMasked && (
+                                                        <span style={{ marginLeft: 8, fontSize: 11, background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
+                                                            🎭 Anonymous
+                                                        </span>
+                                                    )}
+                                                </>
+                                            );
+                                        })()}
                                         {r.attemptNumber && r.attemptNumber > 1 && (
                                             <span style={{ marginLeft: 8, fontSize: 11, background: 'rgba(79,110,247,0.1)', color: 'var(--accent)', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
                                                 Attempt #{r.attemptNumber}
