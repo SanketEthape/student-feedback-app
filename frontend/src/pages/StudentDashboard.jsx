@@ -42,11 +42,12 @@ const ScoreRing = ({ score }) => {
 };
 
 // =============================================
-// FULL RESULT MODAL
 // =============================================
-const ResultModal = ({
+// ASSESSMENT RESULT FULL VIEW (INLINE, NO POPUP)
+// =============================================
+const AssessmentResultView = ({
   response,
-  onClose,
+  onBack,
   hasApiKey,
   onNavigateToSettings,
   onOpenPractice,
@@ -55,6 +56,7 @@ const ResultModal = ({
   if (!response) return null;
   const form = response.form || {};
 
+  const [activeResultTab, setActiveResultTab] = useState('results'); // 'results' | 'resources'
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [localStudyPlan, setLocalStudyPlan] = useState(response.aiStudyPlan);
   const [planErr, setPlanErr] = useState('');
@@ -73,328 +75,485 @@ const ResultModal = ({
     }
   };
 
+  // Compile all unique topics for the unit from topicResources, questions, and answers
+  const allTopics = [
+    ...new Set([
+      ...(form.topicResources || []).map(r => r.topic?.trim()).filter(Boolean),
+      ...(form.questions || []).map(q => q.topic?.trim()).filter(Boolean),
+      ...(response.answers || []).map(a => a.topic?.trim()).filter(Boolean)
+    ])
+  ];
+
+  // Helper to determine student's standing on each topic
+  const getTopicStatus = (topic) => {
+    const matchingAnswers = (response.answers || []).filter(
+      a => a.topic && a.topic.trim().toLowerCase() === topic.toLowerCase()
+    );
+    if (matchingAnswers.length === 0) {
+      return { label: '📘 Unit Topic', color: 'var(--muted)', bg: 'rgba(107,114,128,0.1)' };
+    }
+    const hasWrong = matchingAnswers.some(a => a.isCorrect === false || a.level === 'Low' || a.level === 'Average');
+    if (hasWrong) {
+      return { label: '🔴 Needs Revision', color: '#dc2626', bg: 'rgba(239,68,68,0.1)' };
+    }
+    return { label: '🟢 Mastered', color: '#16a34a', bg: 'rgba(34,197,94,0.1)' };
+  };
+
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-      padding: '24px 16px', overflowY: 'auto'
-    }} onClick={onClose}>
+    <div style={{ display: 'grid', gap: 20 }}>
+      {/* Top Bar with Back Button */}
       <div style={{
-        background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 700,
-        maxHeight: '90vh', overflowY: 'auto', padding: 28,
-        boxShadow: '0 20px 60px rgba(0,0,0,0.4)'
-      }} onClick={e => e.stopPropagation()}>
-        {/* Modal Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        flexWrap: 'wrap', gap: 12, paddingBottom: 12, borderBottom: '1px solid var(--border)'
+      }}>
+        <button
+          onClick={onBack}
+          className="btn btn-secondary"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            fontSize: 13, padding: '8px 16px', fontWeight: 600
+          }}
+        >
+          <span>←</span>
+          <span>Back to Assessments</span>
+        </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {response.attemptNumber && (
+            <span style={{ fontSize: 12, background: 'rgba(79,110,247,0.1)', color: 'var(--accent)', padding: '3px 10px', borderRadius: 12, fontWeight: 600 }}>
+              Attempt #{response.attemptNumber}
+            </span>
+          )}
+          {response.isAnonymous && (
+            <span style={{ fontSize: 12, background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '3px 10px', borderRadius: 12, fontWeight: 600 }}>
+              🎭 Anonymous Submission
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Header Assessment Card */}
+      <div className="card" style={{ padding: '20px 24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <h2 style={{ marginBottom: 4 }}>{form.title || 'Assessment'}</h2>
-            <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-              {form.subject} {form.unit ? `· ${form.unit}` : ''} · {form.faculty?.name} · {new Date(response.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            <h2 style={{ fontSize: 22, margin: '0 0 6px' }}>{form.title || 'Assessment'}</h2>
+            <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0, lineHeight: 1.5 }}>
+              <strong>Subject:</strong> {form.subject} {form.unit ? `· Unit: ${form.unit}` : ''}
+              <br />
+              <strong>Faculty:</strong> {form.faculty?.name || 'Faculty'} · <strong>Submitted:</strong> {new Date(response.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
             </p>
           </div>
-          <button onClick={onClose} style={{
-            background: 'var(--bg)', border: '1px solid var(--border)',
-            borderRadius: 8, padding: '6px 12px', cursor: 'pointer',
-            fontSize: 13, color: 'var(--muted)'
-          }}>✕ Close</button>
-        </div>
 
-        {/* Score Summary */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 20 }}>
-          {[
-            { label: 'Overall Score', value: `${response.overallScore}%`, color: 'var(--accent)' },
-            { label: 'Correct', value: `${response.answers?.filter(a => a.isCorrect === true).length || 0} ✅`, color: '#22c55e' },
-            { label: 'Wrong', value: `${response.answers?.filter(a => a.isCorrect === false).length || 0} ❌`, color: '#ef4444' },
-          ].map((s, i) => (
-            <div key={i} className="card" style={{ textAlign: 'center', padding: '14px 10px' }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: s.color }}>{s.value}</div>
-              <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2 }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Level */}
-        <div style={{ marginBottom: 16 }}>
           <LevelBadge level={response.overallLevel} />
         </div>
+      </div>
 
-        {/* ====================================================== */}
-        {/* FEATURE 1: AI UNIT STUDY PLAN & ESTIMATED STUDY HOURS   */}
-        {/* ====================================================== */}
-        {localStudyPlan ? (
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(79,110,247,0.06) 0%, rgba(16,185,129,0.06) 100%)',
-            border: '1px solid rgba(79,110,247,0.2)',
-            borderRadius: 12,
-            padding: '18px 20px',
-            marginBottom: 20
+      {/* Result Tabs Navigation */}
+      <div style={{
+        display: 'flex', gap: 10, borderBottom: '2px solid var(--border)',
+        paddingBottom: 0, marginTop: 4
+      }}>
+        <button
+          type="button"
+          onClick={() => setActiveResultTab('results')}
+          style={{
+            padding: '10px 20px',
+            borderRadius: '8px 8px 0 0',
+            border: 'none',
+            borderBottom: activeResultTab === 'results' ? '3px solid var(--accent)' : '3px solid transparent',
+            background: activeResultTab === 'results' ? 'rgba(79,110,247,0.08)' : 'transparent',
+            color: activeResultTab === 'results' ? 'var(--accent)' : 'var(--muted)',
+            fontWeight: 700,
+            fontSize: 14,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: -2
+          }}
+        >
+          <span>📊</span>
+          <span>Assessment &amp; AI Results</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveResultTab('resources')}
+          style={{
+            padding: '10px 20px',
+            borderRadius: '8px 8px 0 0',
+            border: 'none',
+            borderBottom: activeResultTab === 'resources' ? '3px solid var(--accent)' : '3px solid transparent',
+            background: activeResultTab === 'resources' ? 'rgba(79,110,247,0.08)' : 'transparent',
+            color: activeResultTab === 'resources' ? 'var(--accent)' : 'var(--muted)',
+            fontWeight: 700,
+            fontSize: 14,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: -2
+          }}
+        >
+          <span>📚</span>
+          <span>Faculty Shared Resources</span>
+          <span style={{
+            background: activeResultTab === 'resources' ? 'var(--accent)' : 'var(--border)',
+            color: activeResultTab === 'resources' ? '#fff' : 'var(--muted)',
+            padding: '1px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 22 }}>🤖</span>
-                <strong style={{ fontSize: 15, color: 'var(--text)' }}>AI Unit Diagnostic &amp; Study Plan</strong>
-              </div>
-              <span style={{
-                background: 'rgba(16, 185, 129, 0.12)',
-                color: '#047857',
-                border: '1px solid rgba(16, 185, 129, 0.3)',
-                padding: '3px 10px',
-                borderRadius: 16,
-                fontSize: 12,
-                fontWeight: 700
-              }}>
-                ⏱️ Study Time Needed: ~{localStudyPlan.totalEstimatedHours || 1} hrs
-              </span>
-            </div>
+            {allTopics.length}
+          </span>
+        </button>
+      </div>
 
-            {localStudyPlan.unitSummary && (
-              <p style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text)', marginBottom: 14 }}>
-                {localStudyPlan.unitSummary}
-              </p>
-            )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
-              {/* Strong Areas */}
-              <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: 8, padding: '12px 14px' }}>
-                <div style={{ fontWeight: 700, fontSize: 12, color: '#047857', marginBottom: 6 }}>
-                  🟢 Strong Concepts in this Unit
-                </div>
-                {localStudyPlan.strongTopics && localStudyPlan.strongTopics.length > 0 ? (
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {localStudyPlan.strongTopics.map((st, i) => (
-                      <span key={i} style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
-                        ✓ {st}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>Continue practicing to build strength in this unit.</span>
-                )}
+      {/* ====================================================== */}
+      {/* TAB 1: ASSESSMENT & AI RESULTS                         */}
+      {/* ====================================================== */}
+      {activeResultTab === 'results' && (
+        <div style={{ display: 'grid', gap: 20 }}>
+          {/* Score Summary */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
+            {[
+              { label: 'Overall Score', value: `${response.overallScore}%`, color: 'var(--accent)' },
+              { label: 'Correct MCQs', value: `${response.answers?.filter(a => a.isCorrect === true).length || 0} ✅`, color: '#22c55e' },
+              { label: 'Wrong MCQs', value: `${response.answers?.filter(a => a.isCorrect === false).length || 0} ❌`, color: '#ef4444' },
+              { label: 'Descriptive Evaluated', value: `${response.answers?.filter(a => a.questionType === 'text').length || 0} ✍️`, color: '#7c6af7' }
+            ].map((s, i) => (
+              <div key={i} className="card" style={{ textAlign: 'center', padding: '14px 10px' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: s.color }}>{s.value}</div>
+                <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2 }}>{s.label}</div>
               </div>
-
-              {/* Weak Areas & Study Hours */}
-              <div style={{ background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 8, padding: '12px 14px' }}>
-                <div style={{ fontWeight: 700, fontSize: 12, color: '#b91c1c', marginBottom: 6 }}>
-                  🔴 Weak Concepts &amp; Required Study Hours
-                </div>
-                {localStudyPlan.weakTopics && localStudyPlan.weakTopics.length > 0 ? (
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    {localStudyPlan.weakTopics.map((wt, i) => (
-                      <div key={i} style={{ background: '#fff', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, padding: '8px 10px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3, flexWrap: 'wrap', gap: 4 }}>
-                          <strong style={{ fontSize: 12, color: '#b91c1c' }}>{wt.topic}</strong>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ background: 'rgba(239,68,68,0.1)', color: '#dc2626', padding: '1px 6px', borderRadius: 10, fontSize: 10, fontWeight: 700 }}>
-                              ⏳ ~{wt.estimatedHours || 1} hr{wt.estimatedHours > 1 ? 's' : ''}
-                            </span>
-                            <button
-                              type="button"
-                              className="btn btn-secondary"
-                              style={{ fontSize: 10, padding: '2px 6px', borderColor: 'var(--accent)', color: 'var(--accent)' }}
-                              onClick={() => onOpenPractice && onOpenPractice(wt.topic, form.subject, form.unit || form.title)}
-                            >
-                              🎯 Practice 3 Qs
-                            </button>
-                          </div>
-                        </div>
-                        {wt.advice && (
-                          <p style={{ margin: 0, fontSize: 11, color: 'var(--muted)', lineHeight: 1.4 }}>
-                            {wt.advice}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <span style={{ fontSize: 12, color: '#047857', fontWeight: 600 }}>🎉 No weak concepts detected in this unit!</span>
-                )}
-              </div>
-            </div>
+            ))}
           </div>
-        ) : (
-          /* LOCKED / GENERATE BANNER */
-          hasApiKey ? (
+
+          {/* AI UNIT STUDY PLAN & ESTIMATED STUDY HOURS */}
+          {localStudyPlan ? (
             <div style={{
-              background: 'rgba(79,110,247,0.06)',
+              background: 'linear-gradient(135deg, rgba(79,110,247,0.06) 0%, rgba(16,185,129,0.06) 100%)',
               border: '1px solid rgba(79,110,247,0.2)',
               borderRadius: 12,
-              padding: '16px 20px',
-              marginBottom: 20
+              padding: '18px 20px'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-                <div>
-                  <strong style={{ fontSize: 14 }}>✨ AI Unit Diagnostic &amp; Study Hours Planner</strong>
-                  <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--muted)' }}>
-                    Calculate exact study hours needed for weak topics and get strong/weak concepts breakdown.
-                  </p>
-                  {planErr && <p style={{ color: '#ef4444', fontSize: 12, margin: '4px 0 0' }}>{planErr}</p>}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 22 }}>🤖</span>
+                  <strong style={{ fontSize: 15, color: 'var(--text)' }}>AI Unit Diagnostic &amp; Study Plan</strong>
                 </div>
-                <button
-                  className="btn btn-primary"
-                  style={{ fontSize: 12, padding: '6px 14px' }}
-                  onClick={generatePlan}
-                  disabled={generatingPlan}
-                >
-                  {generatingPlan ? '🤖 Generating...' : '✨ Generate AI Study Plan'}
-                </button>
+                <span style={{
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  color: '#047857',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  padding: '3px 10px',
+                  borderRadius: 16,
+                  fontSize: 12,
+                  fontWeight: 700
+                }}>
+                  ⏱️ Study Time Needed: ~{localStudyPlan.totalEstimatedHours || 1} hrs
+                </span>
+              </div>
+
+              {localStudyPlan.unitSummary && (
+                <p style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text)', marginBottom: 14 }}>
+                  {localStudyPlan.unitSummary}
+                </p>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+                {/* Strong Areas */}
+                <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: 8, padding: '12px 14px' }}>
+                  <div style={{ fontWeight: 700, fontSize: 12, color: '#047857', marginBottom: 6 }}>
+                    🟢 Mastered Concepts in this Unit
+                  </div>
+                  {localStudyPlan.strongTopics && localStudyPlan.strongTopics.length > 0 ? (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {localStudyPlan.strongTopics.map((st, i) => (
+                        <span key={i} style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
+                          ✓ {st}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>Continue practicing to build strength in this unit.</span>
+                  )}
+                </div>
+
+                {/* Weak Areas & Study Hours */}
+                <div style={{ background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 8, padding: '12px 14px' }}>
+                  <div style={{ fontWeight: 700, fontSize: 12, color: '#b91c1c', marginBottom: 6 }}>
+                    🔴 Weak Concepts &amp; Required Study Hours
+                  </div>
+                  {localStudyPlan.weakTopics && localStudyPlan.weakTopics.length > 0 ? (
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {localStudyPlan.weakTopics.map((wt, i) => (
+                        <div key={i} style={{ background: '#fff', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, padding: '8px 10px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3, flexWrap: 'wrap', gap: 4 }}>
+                            <strong style={{ fontSize: 12, color: '#b91c1c' }}>{wt.topic}</strong>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ background: 'rgba(239,68,68,0.1)', color: '#dc2626', padding: '1px 6px', borderRadius: 10, fontSize: 10, fontWeight: 700 }}>
+                                ⏳ ~{wt.estimatedHours || 1} hr{wt.estimatedHours > 1 ? 's' : ''}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ fontSize: 10, padding: '2px 6px', borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                                onClick={() => onOpenPractice && onOpenPractice(wt.topic, form.subject, form.unit || form.title)}
+                              >
+                                🎯 Practice 3 Qs
+                              </button>
+                            </div>
+                          </div>
+                          {wt.advice && (
+                            <p style={{ margin: 0, fontSize: 11, color: 'var(--muted)', lineHeight: 1.4 }}>
+                              {wt.advice}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: 12, color: '#047857', fontWeight: 600 }}>🎉 No weak concepts detected in this unit!</span>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
-            <div style={{
-              background: 'rgba(245, 158, 11, 0.08)',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
-              borderRadius: 12,
-              padding: '16px 20px',
-              marginBottom: 20
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 20 }}>✨</span>
-                <strong style={{ color: '#d97706', fontSize: 14 }}>
-                  Unlock AI Unit Study Plan &amp; Practice Questions:
-                </strong>
-              </div>
-              <p style={{ margin: '4px 0 10px', fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>
-                Add your free Gemini API key to calculate <strong>how many study hours</strong> you need on weak topics, see your <strong>Strong vs. Weak Areas</strong> for this unit, and practice interactive AI questions on any concept.
-              </p>
-              <button
-                className="btn btn-secondary"
-                style={{ fontSize: 12, padding: '5px 12px' }}
-                onClick={onNavigateToSettings}
-              >
-                ⚙️ Add Gemini API Key in Profile →
-              </button>
-            </div>
-          )
-        )}
-
-        {/* MCQ Answers */}
-        {response.answers?.filter(a => a.questionType === 'mcq').length > 0 && (
-          <>
-            <h3 style={{ marginBottom: 12 }}>📝 MCQ Review</h3>
-            <div style={{ display: 'grid', gap: 10, marginBottom: 20 }}>
-              {response.answers.filter(a => a.questionType === 'mcq').map((a, i) => (
-                <div key={i} className="card" style={{
-                  borderLeft: `4px solid ${a.isCorrect ? '#22c55e' : '#ef4444'}`,
-                  padding: '12px 16px'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: 13 }}>Q{i + 1} · {a.topic}</span>
-                    <span style={{ fontSize: 13 }}>{a.isCorrect ? '✅ Correct' : '❌ Wrong'}</span>
+            /* LOCKED / GENERATE BANNER */
+            hasApiKey ? (
+              <div style={{
+                background: 'rgba(79,110,247,0.06)',
+                border: '1px solid rgba(79,110,247,0.2)',
+                borderRadius: 12,
+                padding: '16px 20px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                  <div>
+                    <strong style={{ fontSize: 14 }}>✨ AI Unit Diagnostic &amp; Study Hours Planner</strong>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--muted)' }}>
+                      Calculate exact study hours needed for weak topics and get strong/weak concepts breakdown.
+                    </p>
+                    {planErr && <p style={{ color: '#ef4444', fontSize: 12, margin: '4px 0 0' }}>{planErr}</p>}
                   </div>
-                  <p style={{ fontSize: 14, marginBottom: 8 }}>{a.question}</p>
-                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                    <strong>Your answer:</strong> {a.answer || 'Not answered'}
-                    {!a.isCorrect && a.correctAnswer && (
-                      <> &nbsp;·&nbsp; <strong>Correct:</strong> {a.correctAnswer}</>
-                    )}
-                  </div>
-                  {a.explanation && (
-                    <div style={{
-                      marginTop: 10, padding: '10px 12px', borderRadius: 8,
-                      background: 'rgba(124,106,247,0.08)', fontSize: 13, lineHeight: 1.6
-                    }}>
-                      💡 {a.explanation}
-                    </div>
-                  )}
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: 12, padding: '6px 14px' }}
+                    onClick={generatePlan}
+                    disabled={generatingPlan}
+                  >
+                    {generatingPlan ? '🤖 Generating...' : '✨ Generate AI Study Plan'}
+                  </button>
                 </div>
-              ))}
-            </div>
-          </>
-        )}
+              </div>
+            ) : (
+              <div style={{
+                background: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                borderRadius: 12,
+                padding: '16px 20px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 20 }}>✨</span>
+                  <strong style={{ color: '#d97706', fontSize: 14 }}>
+                    Unlock AI Unit Study Plan &amp; Practice Questions:
+                  </strong>
+                </div>
+                <p style={{ margin: '4px 0 10px', fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>
+                  Add your free Gemini API key to calculate <strong>how many study hours</strong> you need on weak topics, see your <strong>Strong vs. Weak Areas</strong> for this unit, and practice interactive AI questions on any concept.
+                </p>
+                <button
+                  className="btn btn-secondary"
+                  style={{ fontSize: 12, padding: '5px 12px' }}
+                  onClick={onNavigateToSettings}
+                >
+                  ⚙️ Add Gemini API Key in Profile →
+                </button>
+              </div>
+            )
+          )}
 
-        {/* Descriptive Answers */}
-        {response.answers?.filter(a => a.questionType === 'text').length > 0 && (
-          <>
-            <h3 style={{ marginBottom: 12 }}>✍️ Descriptive Review</h3>
-            <div style={{ display: 'grid', gap: 10, marginBottom: 20 }}>
-              {response.answers.filter(a => a.questionType === 'text').map((a, i) => {
-                const levelColor = a.level === 'Good' ? '#22c55e' : a.level === 'Average' ? '#f59e0b' : '#ef4444';
-                return (
-                  <div key={i} className="card" style={{ borderLeft: `4px solid ${levelColor}`, padding: '12px 16px' }}>
+          {/* MCQ Answers */}
+          {response.answers?.filter(a => a.questionType === 'mcq').length > 0 && (
+            <div>
+              <h3 style={{ marginBottom: 12 }}>📝 MCQ Review</h3>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {response.answers.filter(a => a.questionType === 'mcq').map((a, i) => (
+                  <div key={i} className="card" style={{
+                    borderLeft: `4px solid ${a.isCorrect ? '#22c55e' : '#ef4444'}`,
+                    padding: '12px 16px'
+                  }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: 13 }}>· {a.topic}</span>
-                      <span style={{ color: levelColor, fontSize: 13, fontWeight: 600 }}>{a.level} ({a.score}%)</span>
+                      <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: 13 }}>Q{i + 1} · {a.topic}</span>
+                      <span style={{ fontSize: 13 }}>{a.isCorrect ? '✅ Correct' : '❌ Wrong'}</span>
                     </div>
                     <p style={{ fontSize: 14, marginBottom: 8 }}>{a.question}</p>
-                    <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
+                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>
                       <strong>Your answer:</strong> {a.answer || 'Not answered'}
+                      {!a.isCorrect && a.correctAnswer && (
+                        <> &nbsp;·&nbsp; <strong>Correct:</strong> {a.correctAnswer}</>
+                      )}
                     </div>
-                    {a.feedback && (
-                      <p style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text)' }}>{a.feedback}</p>
+                    {a.explanation && (
+                      <div style={{
+                        marginTop: 10, padding: '10px 12px', borderRadius: 8,
+                        background: 'rgba(124,106,247,0.08)', fontSize: 13, lineHeight: 1.6
+                      }}>
+                        💡 {a.explanation}
+                      </div>
                     )}
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
-          </>
-        )}
+          )}
 
-        {/* Recommended Learning Resources & Videos */}
-        {(() => {
-          const weakTopics = [...new Set(
-            response.answers
-              ?.filter(a => a.isCorrect === false || a.level === 'Low' || a.level === 'Average')
-              ?.map(a => a.topic?.trim())
-              ?.filter(Boolean)
-          )];
-          if (weakTopics.length === 0) return null;
-
-          return (
-            <div style={{ marginTop: 24 }}>
-              <h3 style={{ marginBottom: 12 }}>📚 Recommended Learning Resources</h3>
-              <div style={{ display: 'grid', gap: 12 }}>
-                {weakTopics.map((topic, i) => {
-                  const matchedResource = (form.topicResources || []).find(
-                    tr => tr.topic && tr.topic.trim().toLowerCase() === topic.toLowerCase()
-                  );
-                  const videoUrl = matchedResource?.videoUrl?.trim();
-
+          {/* Descriptive Answers */}
+          {response.answers?.filter(a => a.questionType === 'text').length > 0 && (
+            <div>
+              <h3 style={{ marginBottom: 12 }}>✍️ Descriptive Review</h3>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {response.answers.filter(a => a.questionType === 'text').map((a, i) => {
+                  const levelColor = a.level === 'Good' ? '#22c55e' : a.level === 'Average' ? '#f59e0b' : '#ef4444';
                   return (
-                    <div key={i} className="card" style={{ borderLeft: '4px solid var(--accent)', padding: '12px 16px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                        <span style={{ fontWeight: 700, fontSize: 14 }}>📖 {topic}</span>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (onOpenPractice) {
-                                onOpenPractice(topic, form.subject || '', form.unit || '');
-                              }
-                            }}
-                            className="btn btn-outline"
-                            style={{
-                              fontSize: 12, padding: '5px 12px',
-                              borderColor: 'var(--accent)', color: 'var(--accent)',
-                              display: 'inline-flex', alignItems: 'center', gap: 5
-                            }}
-                          >
-                            🎯 Practice 3 Questions
-                          </button>
-                          {videoUrl ? (
-                            <a
-                              href={videoUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="btn btn-primary"
-                              style={{
-                                fontSize: 12, padding: '5px 12px',
-                                textDecoration: 'none', background: '#059669', borderColor: '#059669'
-                              }}
-                            >
-                              🎥 Watch Faculty Recommended Video
-                            </a>
-                          ) : null}
-                        </div>
+                    <div key={i} className="card" style={{ borderLeft: `4px solid ${levelColor}`, padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: 13 }}>· {a.topic}</span>
+                        <span style={{ color: levelColor, fontSize: 13, fontWeight: 600 }}>{a.level} ({a.score}%)</span>
                       </div>
+                      <p style={{ fontSize: 14, marginBottom: 8 }}>{a.question}</p>
+                      <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
+                        <strong>Your answer:</strong> {a.answer || 'Not answered'}
+                      </div>
+                      {a.feedback && (
+                        <p style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text)' }}>{a.feedback}</p>
+                      )}
                     </div>
                   );
                 })}
               </div>
             </div>
-          );
-        })()}
-      </div>
+          )}
+
+          {/* Callout to Shared Resources Tab */}
+          <div className="card" style={{
+            background: 'rgba(79,110,247,0.04)',
+            border: '1px dashed var(--accent)',
+            padding: '16px 20px',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12
+          }}>
+            <div>
+              <strong style={{ fontSize: 14 }}>📚 Want to explore all faculty learning materials?</strong>
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--muted)' }}>
+                Access faculty video lectures and targeted 3-question practice for all topics in this unit.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setActiveResultTab('resources')}
+              style={{ fontSize: 12, padding: '7px 16px' }}
+            >
+              View Faculty Resources ({allTopics.length}) →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ====================================================== */}
+      {/* TAB 2: FACULTY SHARED RESOURCES (FOR ALL STUDENTS)     */}
+      {/* ====================================================== */}
+      {activeResultTab === 'resources' && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <div className="card" style={{
+            background: 'linear-gradient(135deg, rgba(79,110,247,0.06), rgba(16,185,129,0.05))',
+            border: '1px solid rgba(79,110,247,0.2)', padding: '16px 20px'
+          }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: 16 }}>📚 Faculty Shared Learning Materials &amp; Lecture Videos</h3>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>
+              All resources shared by faculty for <strong>{form.subject}</strong> {form.unit ? `(${form.unit})` : ''} are provided below for all students regardless of test score. Review the recommended lectures and practice any topic with targeted AI questions!
+            </p>
+          </div>
+
+          {allTopics.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--muted)' }}>
+              No topic resources were found for this assessment.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 14 }}>
+              {allTopics.map((topic, i) => {
+                const matchedResource = (form.topicResources || []).find(
+                  tr => tr.topic && tr.topic.trim().toLowerCase() === topic.toLowerCase()
+                );
+                const videoUrl = matchedResource?.videoUrl?.trim();
+                const resourceTitle = matchedResource?.title?.trim();
+                const status = getTopicStatus(topic);
+
+                return (
+                  <div key={i} className="card" style={{
+                    padding: '16px 20px',
+                    borderLeft: `4px solid ${videoUrl ? 'var(--accent)' : 'var(--border)'}`
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                          <span style={{ fontWeight: 700, fontSize: 15 }}>📖 {topic}</span>
+                          <span style={{
+                            background: status.bg, color: status.color,
+                            padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700
+                          }}>
+                            {status.label}
+                          </span>
+                        </div>
+                        {resourceTitle && (
+                          <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>
+                            📌 <em>{resourceTitle}</em>
+                          </div>
+                        )}
+                        {!videoUrl && (
+                          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                            No external video attached by faculty · Targeted AI practice available
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                        {videoUrl && (
+                          <a
+                            href={videoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-primary"
+                            style={{
+                              fontSize: 12, padding: '6px 14px',
+                              textDecoration: 'none', background: '#059669', borderColor: '#059669',
+                              display: 'inline-flex', alignItems: 'center', gap: 6
+                            }}
+                          >
+                            <span>🎥</span>
+                            <span>Watch Faculty Video</span>
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => onOpenPractice && onOpenPractice(topic, form.subject || '', form.unit || form.title || '')}
+                          style={{
+                            fontSize: 12, padding: '6px 14px',
+                            borderColor: 'var(--accent)', color: 'var(--accent)',
+                            display: 'inline-flex', alignItems: 'center', gap: 6
+                          }}
+                        >
+                          <span>🎯</span>
+                          <span>Practice 3 Questions</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -589,14 +748,35 @@ export default function StudentDashboard() {
       <StudentNavbar />
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '28px 16px' }}>
-
-        {/* Welcome Banner */}
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(79,110,247,0.12), rgba(124,106,247,0.08))',
-          border: '1px solid rgba(79,110,247,0.2)', borderRadius: 16,
-          padding: '24px 28px', marginBottom: 28,
-          display: 'flex', alignItems: 'center', gap: 20
-        }}>
+        {selectedResponse ? (
+          <AssessmentResultView
+            response={selectedResponse}
+            onBack={() => setSelectedResponse(null)}
+            hasApiKey={!!profile?.hasApiKey}
+            onNavigateToSettings={() => {
+              setSelectedResponse(null);
+              setTab('profile');
+            }}
+            onOpenPractice={(topic, subject, unit) => {
+              setPracticeTopic(topic);
+              setPracticeSubject(subject);
+              setPracticeUnit(unit);
+              setPracticeModalOpen(true);
+            }}
+            onPlanGenerated={(responseId, plan) => {
+              setResponses(prev => prev.map(r => r._id === responseId ? { ...r, aiStudyPlan: plan } : r));
+              setSelectedResponse(prev => prev?._id === responseId ? { ...prev, aiStudyPlan: plan } : prev);
+            }}
+          />
+        ) : (
+          <>
+            {/* Welcome Banner */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(79,110,247,0.12), rgba(124,106,247,0.08))',
+              border: '1px solid rgba(79,110,247,0.2)', borderRadius: 16,
+              padding: '24px 28px', marginBottom: 28,
+              display: 'flex', alignItems: 'center', gap: 20
+            }}>
           <div style={{
             width: 60, height: 60, borderRadius: '50%', flexShrink: 0,
             background: 'linear-gradient(135deg, #4f6ef7, #7c6af7)',
@@ -1255,30 +1435,9 @@ export default function StudentDashboard() {
             </div>
           </div>
         )}
+          </>
+        )}
       </div>
-
-      {/* Full Result Modal */}
-      {selectedResponse && (
-        <ResultModal
-          response={selectedResponse}
-          onClose={() => setSelectedResponse(null)}
-          hasApiKey={!!profile?.hasApiKey}
-          onNavigateToSettings={() => {
-            setSelectedResponse(null);
-            setTab('profile');
-          }}
-          onOpenPractice={(topic, subject, unit) => {
-            setPracticeTopic(topic);
-            setPracticeSubject(subject);
-            setPracticeUnit(unit);
-            setPracticeModalOpen(true);
-          }}
-          onPlanGenerated={(responseId, plan) => {
-            setResponses(prev => prev.map(r => r._id === responseId ? { ...r, aiStudyPlan: plan } : r));
-            setSelectedResponse(prev => prev?._id === responseId ? { ...prev, aiStudyPlan: plan } : prev);
-          }}
-        />
-      )}
 
       {/* Interactive Practice Modal */}
       <PracticeModal

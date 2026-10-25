@@ -24,6 +24,7 @@ export default function StudentForm() {
   // Practice Modal State
   const [practiceTopic, setPracticeTopic] = useState("");
   const [practiceModalOpen, setPracticeModalOpen] = useState(false);
+  const [activeResultTab, setActiveResultTab] = useState("results"); // 'results' | 'resources'
 
   const openPracticeModal = (topicName) => {
     setPracticeTopic(topicName);
@@ -638,6 +639,80 @@ export default function StudentForm() {
               </div>
             </div>
 
+            {/* TAB NAVIGATION FOR POST-SUBMISSION RESULTS */}
+            {(() => {
+              const allFormTopics = [
+                ...new Set([
+                  ...(form?.topicResources || []).map(r => r.topic?.trim()).filter(Boolean),
+                  ...(form?.questions || []).map(q => q.topic?.trim()).filter(Boolean),
+                  ...(result?.answers || []).map(a => a.topic?.trim()).filter(Boolean)
+                ])
+              ];
+
+              return (
+                <div style={{
+                  display: 'flex', gap: 10, borderBottom: '2px solid var(--border)',
+                  paddingBottom: 0, marginBottom: 20
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveResultTab('results')}
+                    style={{
+                      padding: '10px 20px',
+                      borderRadius: '8px 8px 0 0',
+                      border: 'none',
+                      borderBottom: activeResultTab === 'results' ? '3px solid var(--accent)' : '3px solid transparent',
+                      background: activeResultTab === 'results' ? 'rgba(79,110,247,0.08)' : 'transparent',
+                      color: activeResultTab === 'results' ? 'var(--accent)' : 'var(--muted)',
+                      fontWeight: 700,
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      marginBottom: -2
+                    }}
+                  >
+                    <span>📊</span>
+                    <span>Assessment &amp; AI Results</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveResultTab('resources')}
+                    style={{
+                      padding: '10px 20px',
+                      borderRadius: '8px 8px 0 0',
+                      border: 'none',
+                      borderBottom: activeResultTab === 'resources' ? '3px solid var(--accent)' : '3px solid transparent',
+                      background: activeResultTab === 'resources' ? 'rgba(79,110,247,0.08)' : 'transparent',
+                      color: activeResultTab === 'resources' ? 'var(--accent)' : 'var(--muted)',
+                      fontWeight: 700,
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      marginBottom: -2
+                    }}
+                  >
+                    <span>📚</span>
+                    <span>Faculty Shared Resources</span>
+                    <span style={{
+                      background: activeResultTab === 'resources' ? 'var(--accent)' : 'var(--border)',
+                      color: activeResultTab === 'resources' ? '#fff' : 'var(--muted)',
+                      padding: '1px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700
+                    }}>
+                      {allFormTopics.length}
+                    </span>
+                  </button>
+                </div>
+              );
+            })()}
+
+            {/* TAB 1: ASSESSMENT RESULTS & AI DIAGNOSTIC */}
+            {activeResultTab === "results" && (
+              <>
             {/* ====================================================== */}
             {/* FEATURE 1: AI UNIT STUDY PLAN & ESTIMATED STUDY HOURS   */}
             {/* (Exclusive for students with personal Gemini API key)    */}
@@ -905,133 +980,161 @@ export default function StudentForm() {
                 ))}
             </div>
 
-            {/* LEARNING RESOURCES */}
-
-            {result.learningResources &&
-              result.learningResources.length > 0 && (
-                <>
-                  <h2
-                    style={{
-                      margin: "32px 0 16px",
-                    }}
+                {/* Callout to Shared Resources Tab */}
+                <div className="card" style={{
+                  background: 'rgba(79,110,247,0.04)',
+                  border: '1px dashed var(--accent)',
+                  padding: '16px 20px',
+                  marginTop: 24,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12
+                }}>
+                  <div>
+                    <strong style={{ fontSize: 14 }}>📚 Want to explore all faculty learning materials?</strong>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--muted)' }}>
+                      Access faculty video lectures and targeted 3-question practice for all topics in this unit.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => setActiveResultTab('resources')}
+                    style={{ fontSize: 12, padding: '7px 16px' }}
                   >
-                    📚 Recommended Learning Resources
-                  </h2>
+                    View Faculty Resources →
+                  </button>
+                </div>
+              </>
+            )}
 
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 16,
-                    }}
-                  >
-                    {result.learningResources.map(
-                      (resource, index) => (
-                        <div
-                          key={index}
-                          className="card"
-                          style={{
-                            borderLeft:
-                              "4px solid var(--accent)",
-                          }}
-                        >
-                          <h3
-                            style={{
-                              marginBottom: 12,
-                            }}
-                          >
-                            📖 {resource.topic}
-                          </h3>
+            {/* TAB 2: FACULTY SHARED RESOURCES (FOR ALL STUDENTS) */}
+            {activeResultTab === "resources" && (() => {
+              const allFormTopics = [
+                ...new Set([
+                  ...(form?.topicResources || []).map(r => r.topic?.trim()).filter(Boolean),
+                  ...(form?.questions || []).map(q => q.topic?.trim()).filter(Boolean),
+                  ...(result?.answers || []).map(a => a.topic?.trim()).filter(Boolean)
+                ])
+              ];
 
-                          {/* NOTES */}
+              const getFormTopicStatus = (topic) => {
+                const matchingAnswers = (result?.answers || []).filter(
+                  a => a.topic && a.topic.trim().toLowerCase() === topic.toLowerCase()
+                );
+                if (matchingAnswers.length === 0) {
+                  return { label: '📘 Unit Topic', color: 'var(--muted)', bg: 'rgba(107,114,128,0.1)' };
+                }
+                const hasWrong = matchingAnswers.some(a => a.isCorrect === false || a.level === 'Low' || a.level === 'Average');
+                if (hasWrong) {
+                  return { label: '🔴 Needs Revision', color: '#dc2626', bg: 'rgba(239,68,68,0.1)' };
+                }
+                return { label: '🟢 Mastered', color: '#16a34a', bg: 'rgba(34,197,94,0.1)' };
+              };
 
-                          <div
-                            style={{
-                              marginBottom: 16,
-                            }}
-                          >
-                            <strong>
-                              Quick Notes
-                            </strong>
+              return (
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <div className="card" style={{
+                    background: 'linear-gradient(135deg, rgba(79,110,247,0.06), rgba(16,185,129,0.05))',
+                    border: '1px solid rgba(79,110,247,0.2)', padding: '16px 20px'
+                  }}>
+                    <h3 style={{ margin: '0 0 6px', fontSize: 16 }}>📚 Faculty Shared Learning Materials &amp; Lecture Videos</h3>
+                    <p style={{ margin: 0, fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>
+                      All learning resources shared by faculty for <strong>{form?.subject}</strong> {form?.unit ? `(${form.unit})` : ''} are provided below for all students regardless of test score. Review the recommended lectures and practice any topic below with targeted questions!
+                    </p>
+                  </div>
 
-                            <p
-                              style={{
-                                marginTop: 6,
-                                lineHeight: 1.7,
-                                color:
-                                  "var(--muted)",
-                              }}
-                            >
-                              {resource.notes}
-                            </p>
-                          </div>
+                  {allFormTopics.length === 0 ? (
+                    <div className="card" style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--muted)' }}>
+                      No topic resources were found for this assessment.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gap: 14 }}>
+                      {allFormTopics.map((topic, i) => {
+                        const matchedResource = (form?.topicResources || []).find(
+                          tr => tr.topic && tr.topic.trim().toLowerCase() === topic.toLowerCase()
+                        );
+                        const matchedLearningRes = (result?.learningResources || []).find(
+                          lr => lr.topic && lr.topic.trim().toLowerCase() === topic.toLowerCase()
+                        );
+                        const videoUrl = matchedResource?.videoUrl?.trim() || matchedLearningRes?.videoUrl?.trim();
+                        const resourceTitle = matchedResource?.title?.trim();
+                        const status = getFormTopicStatus(topic);
 
-                          {/* IMPORTANT POINTS */}
+                        return (
+                          <div key={i} className="card" style={{
+                            padding: '16px 20px',
+                            borderLeft: `4px solid ${videoUrl ? 'var(--accent)' : 'var(--border)'}`
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                                  <span style={{ fontWeight: 700, fontSize: 15 }}>📖 {topic}</span>
+                                  <span style={{
+                                    background: status.bg, color: status.color,
+                                    padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700
+                                  }}>
+                                    {status.label}
+                                  </span>
+                                </div>
+                                {resourceTitle && (
+                                  <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>
+                                    📌 <em>{resourceTitle}</em>
+                                  </div>
+                                )}
+                                {!videoUrl && (
+                                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                                    No external video attached by faculty · Targeted AI practice available below
+                                  </div>
+                                )}
+                              </div>
 
-                          {resource.importantPoints &&
-                            resource.importantPoints.length >
-                            0 && (
-                              <div
-                                style={{
-                                  marginBottom: 18,
-                                }}
-                              >
-                                <strong>
-                                  Important Points
-                                </strong>
-
-                                <ul
+                              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                                {videoUrl && (
+                                  <a
+                                    href={videoUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn btn-primary"
+                                    style={{
+                                      fontSize: 12, padding: '6px 14px',
+                                      textDecoration: 'none', background: '#059669', borderColor: '#059669',
+                                      display: 'inline-flex', alignItems: 'center', gap: 6
+                                    }}
+                                  >
+                                    <span>🎥</span>
+                                    <span>Watch Faculty Video</span>
+                                  </a>
+                                )}
+                                <button
+                                  type="button"
+                                  className="btn btn-outline"
+                                  onClick={() => openPracticeModal(topic)}
                                   style={{
-                                    marginTop: 8,
-                                    paddingLeft: 20,
-                                    lineHeight: 1.8,
+                                    fontSize: 12, padding: '6px 14px',
+                                    borderColor: 'var(--accent)', color: 'var(--accent)',
+                                    display: 'inline-flex', alignItems: 'center', gap: 6
                                   }}
                                 >
-                                  {resource.importantPoints.map(
-                                    (point, i) => (
-                                      <li key={i}>
-                                        {point}
-                                      </li>
-                                    )
-                                  )}
-                                </ul>
+                                  <span>🎯</span>
+                                  <span>Practice 3 Questions</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Quick notes if available */}
+                            {matchedLearningRes?.notes && (
+                              <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>Quick Notes:</div>
+                                <p style={{ fontSize: 13, color: 'var(--text)', margin: 0, lineHeight: 1.6 }}>{matchedLearningRes.notes}</p>
                               </div>
                             )}
-
-                          {/* RECOMMENDED VIDEO & TARGETED AI PRACTICE */}
-                          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: 12 }}>
-                            {resource.videoUrl ? (
-                              <a
-                                href={resource.videoUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="btn btn-primary"
-                                style={{
-                                  display: "inline-block",
-                                  textDecoration: "none",
-                                  background: "#059669",
-                                  borderColor: "#059669",
-                                  fontSize: 13
-                                }}
-                              >
-                                🎥 Watch Faculty Recommended Video
-                              </a>
-                            ) : null}
-                            <button
-                              type="button"
-                              className="btn btn-secondary"
-                              style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: 'var(--accent)', color: 'var(--accent)' }}
-                              onClick={() => openPracticeModal(resource.topic)}
-                            >
-                              <span>🎯</span>
-                              <span>Practice 3 Questions</span>
-                            </button>
                           </div>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </>
-              )}
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* FOOTER */}
 
