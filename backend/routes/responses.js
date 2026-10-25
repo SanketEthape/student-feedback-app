@@ -8,6 +8,7 @@ const Student = require('../models/Student');
 const Faculty = require('../models/Faculty');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { decrypt } = require('../utils/encryption');
+const { autoEvaluatePendingAnswers } = require('../utils/evaluateDescriptive');
 
 
 // ======================================================
@@ -854,12 +855,17 @@ router.get('/my-responses', studentAuth, async (req, res) => {
             .sort({ submittedAt: -1 })
             .populate({
                 path: 'form',
-                select: 'title subject topicResources',
+                select: 'title subject topicResources questions faculty',
                 populate: {
                     path: 'faculty',
-                    select: 'name department'
+                    select: 'name department geminiApiKey'
                 }
             });
+
+        // Auto-evaluate any pending unevaluated descriptive answers
+        for (const r of responses) {
+            await autoEvaluatePendingAnswers(r);
+        }
 
         res.json(responses);
     } catch (err) {
@@ -879,16 +885,18 @@ router.get('/my-responses/:id', studentAuth, async (req, res) => {
             student: req.student.id
         }).populate({
             path: 'form',
-            select: 'title subject topicResources',
+            select: 'title subject topicResources questions faculty',
             populate: {
                 path: 'faculty',
-                select: 'name department'
+                select: 'name department geminiApiKey'
             }
         });
 
         if (!response) {
             return res.status(404).json({ message: 'Response not found' });
         }
+
+        await autoEvaluatePendingAnswers(response);
 
         res.json(response);
     } catch (err) {
@@ -928,6 +936,10 @@ router.get(
                     .sort({
                         submittedAt: -1
                     });
+
+            for (const r of responses) {
+                await autoEvaluatePendingAnswers(r);
+            }
 
             res.json(responses);
 
