@@ -541,7 +541,7 @@ export default function FormAnalytics() {
                                 }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                                         <span style={{ fontSize: 12, fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                                            🏆 Most Understood Topic
+                                            🏆 Most Understood {analytics.mostUnderstoodTopic.isTie ? `Topics (${analytics.mostUnderstoodTopic.count} Tied)` : 'Topic'}
                                         </span>
                                         <span style={{
                                             background: '#10b981', color: '#fff', padding: '2px 10px',
@@ -554,7 +554,9 @@ export default function FormAnalytics() {
                                         {analytics.mostUnderstoodTopic.topic}
                                     </h3>
                                     <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
-                                        Class demonstrated highest mastery in this concept.
+                                        {analytics.mostUnderstoodTopic.isTie
+                                            ? `Class demonstrated highest mastery across these ${analytics.mostUnderstoodTopic.count} tied topics.`
+                                            : 'Class demonstrated highest mastery in this concept.'}
                                     </p>
                                 </div>
                             )}
@@ -567,7 +569,7 @@ export default function FormAnalytics() {
                                 }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                                         <span style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                                            ⚠️ Lowest Understood Topic (Priority)
+                                            ⚠️ Lowest Understood {analytics.lowestUnderstoodTopic.isTie ? `Topics (${analytics.lowestUnderstoodTopic.count} Tied Priority)` : 'Topic (Priority)'}
                                         </span>
                                         <span style={{
                                             background: '#ef4444', color: '#fff', padding: '2px 10px',
@@ -580,7 +582,9 @@ export default function FormAnalytics() {
                                         {analytics.lowestUnderstoodTopic.topic}
                                     </h3>
                                     <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
-                                        Requires immediate classroom reteaching and targeted review.
+                                        {analytics.lowestUnderstoodTopic.isTie
+                                            ? `These ${analytics.lowestUnderstoodTopic.count} topics tied for lowest score and require immediate classroom reteaching.`
+                                            : 'Requires immediate classroom reteaching and targeted review.'}
                                     </p>
                                 </div>
                             )}
@@ -645,8 +649,12 @@ export default function FormAnalytics() {
                                         ti => ti.topic && ti.topic.trim().toLowerCase() === stat.topic.trim().toLowerCase()
                                     ) || {};
 
-                                    const isLowest = analytics.lowestUnderstoodTopic?.topic === stat.topic;
-                                    const isMost = analytics.mostUnderstoodTopic?.topic === stat.topic;
+                                    const isLowest = analytics.lowestUnderstoodTopic?.topics
+                                        ? analytics.lowestUnderstoodTopic.topics.includes(stat.topic)
+                                        : analytics.lowestUnderstoodTopic?.topic === stat.topic;
+                                    const isMost = analytics.mostUnderstoodTopic?.topics
+                                        ? analytics.mostUnderstoodTopic.topics.includes(stat.topic)
+                                        : analytics.mostUnderstoodTopic?.topic === stat.topic;
                                     const score = stat.avgScore || stat.pct;
                                     const badgeColor = score >= 75 ? '#10b981' : score >= 50 ? '#f59e0b' : '#ef4444';
                                     const badgeBg = score >= 75 ? 'rgba(16,185,129,0.1)' : score >= 50 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)';
@@ -663,12 +671,12 @@ export default function FormAnalytics() {
                                                         <h4 style={{ margin: 0, fontSize: 17, color: 'var(--text)' }}>{stat.topic}</h4>
                                                         {isLowest && (
                                                             <span style={{ background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4 }}>
-                                                                LOWEST UNDERSTOOD
+                                                                {analytics.lowestUnderstoodTopic?.isTie ? 'LOWEST UNDERSTOOD (TIED)' : 'LOWEST UNDERSTOOD'}
                                                             </span>
                                                         )}
                                                         {isMost && (
                                                             <span style={{ background: '#10b981', color: '#fff', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4 }}>
-                                                                MOST UNDERSTOOD
+                                                                {analytics.mostUnderstoodTopic?.isTie ? 'MOST UNDERSTOOD (TIED)' : 'MOST UNDERSTOOD'}
                                                             </span>
                                                         )}
                                                     </div>

@@ -78,15 +78,40 @@ router.get('/form/:formId', auth, async (req, res) => {
         });
 
         // ==================================================
-        // Most & Lowest Understood Topics
+        // Most & Lowest Understood Topics (Supports Ties)
         // ==================================================
         let mostUnderstoodTopic = null;
         let lowestUnderstoodTopic = null;
 
         if (topicStats.length > 0) {
             const sorted = [...topicStats].sort((a, b) => b.avgScore - a.avgScore);
-            mostUnderstoodTopic = sorted[0];
-            lowestUnderstoodTopic = sorted[sorted.length - 1];
+            const highestScore = sorted[0].avgScore;
+            const lowestScore = sorted[sorted.length - 1].avgScore;
+
+            const highestTopics = sorted.filter(t => t.avgScore === highestScore);
+            const lowestTopics = sorted.filter(t => t.avgScore === lowestScore);
+
+            mostUnderstoodTopic = {
+                avgScore: highestScore,
+                pct: highestScore,
+                topics: highestTopics.map(t => t.topic),
+                topic: highestTopics.map(t => t.topic).join(', '),
+                isTie: highestTopics.length > 1,
+                count: highestTopics.length
+            };
+
+            // Only display lowest understood topic if there is a distinct lower score,
+            // or if the lowest score requires improvement (< 75%)
+            if (lowestScore < highestScore || lowestScore < 75) {
+                lowestUnderstoodTopic = {
+                    avgScore: lowestScore,
+                    pct: lowestScore,
+                    topics: lowestTopics.map(t => t.topic),
+                    topic: lowestTopics.map(t => t.topic).join(', '),
+                    isTie: lowestTopics.length > 1,
+                    count: lowestTopics.length
+                };
+            }
         }
 
         // ==================================================
