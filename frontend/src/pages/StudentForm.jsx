@@ -899,8 +899,7 @@ export default function StudentForm() {
                               </div>
                             )}
 
-                          {/* RECOMMENDED VIDEO OR YOUTUBE */}
-
+                          {/* RECOMMENDED VIDEO - ONLY SHOWN IF FACULTY ADDED A VIDEO LINK */}
                           {resource.videoUrl ? (
                             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                               <a
@@ -917,44 +916,8 @@ export default function StudentForm() {
                               >
                                 🎥 Watch Faculty Recommended Video
                               </a>
-                              {resource.youtubeSearch && (
-                                <a
-                                  href={`https://www.youtube.com/results?search_query=${encodeURIComponent(
-                                    resource.youtubeSearch
-                                  )}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="btn btn-secondary"
-                                  style={{
-                                    display: "inline-block",
-                                    textDecoration: "none",
-                                    fontSize: 13
-                                  }}
-                                >
-                                  🔍 More YouTube Tutorials
-                                </a>
-                              )}
                             </div>
-                          ) : (
-                            resource.youtubeSearch && (
-                              <a
-                                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(
-                                  resource.youtubeSearch
-                                )}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="btn btn-primary"
-                                style={{
-                                  display:
-                                    "inline-block",
-                                  textDecoration:
-                                    "none",
-                                }}
-                              >
-                                ▶️ Watch Recommended Videos
-                              </a>
-                            )
-                          )}
+                          ) : null}
                         </div>
                       )
                     )}

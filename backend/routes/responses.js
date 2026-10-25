@@ -356,11 +356,6 @@ router.post('/submit/:link', studentAuth, async (req, res) => {
                     correct
                         ? 'Good understanding of this concept.'
                         : `Review ${q.topic} and practice similar MCQs.`;
-
-                if (!correct) {
-                    baseAnswer.youtubeSearch =
-                        `${q.topic} complete tutorial for beginners`;
-                }
             }
 
 
@@ -386,9 +381,6 @@ router.post('/submit/:link', studentAuth, async (req, res) => {
 
                         baseAnswer.action =
                             `Focus on understanding the fundamentals of ${q.topic}.`;
-
-                        baseAnswer.youtubeSearch =
-                            `${q.topic} complete tutorial for beginners`;
                     }
 
                     else if (value === 3) {
@@ -448,9 +440,6 @@ router.post('/submit/:link', studentAuth, async (req, res) => {
 
                     baseAnswer.action =
                         `Study ${q.topic} and attempt the question again.`;
-
-                    baseAnswer.youtubeSearch =
-                        `${q.topic} complete tutorial for beginners`;
                 }
 
                 else if (model) {
@@ -488,7 +477,6 @@ Give:
 3. Short constructive feedback
 4. Missing important points
 5. Three important points to study
-6. A useful YouTube search query only if the answer is Low or Average
 
 Return ONLY valid JSON.
 
@@ -507,7 +495,6 @@ Use exactly this format:
         "Important point 2",
         "Important point 3"
     ],
-    "youtubeSearch": "topic complete tutorial for beginners",
     "action": "What the student should do next"
 }
 `;
@@ -562,14 +549,6 @@ Use exactly this format:
                             )
                                 ? evaluation.importantPoints
                                 : [];
-
-                        baseAnswer.youtubeSearch =
-                            baseAnswer.level !== 'Good'
-                                ? (
-                                    evaluation.youtubeSearch ||
-                                    `${q.topic} complete tutorial for beginners`
-                                )
-                                : '';
 
                         baseAnswer.action =
                             evaluation.action || '';
@@ -693,11 +672,7 @@ Use exactly this format:
                     importantPoints:
                         a.importantPoints || [],
 
-                    videoUrl: facultyVideoUrl,
-
-                    youtubeSearch:
-                        a.youtubeSearch ||
-                        `${a.topic} complete tutorial for beginners`
+                    videoUrl: facultyVideoUrl
                 });
             }
         });

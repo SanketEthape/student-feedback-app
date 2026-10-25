@@ -204,17 +204,7 @@ const ResultModal = ({ response, onClose }) => {
                           >
                             🎥 Watch Faculty Recommended Video
                           </a>
-                        ) : (
-                          <a
-                            href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${topic} complete tutorial for beginners`)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="btn btn-secondary"
-                            style={{ fontSize: 12, padding: '5px 12px', textDecoration: 'none' }}
-                          >
-                            ▶️ Search Tutorials
-                          </a>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   );
