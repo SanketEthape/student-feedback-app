@@ -5,6 +5,7 @@ const optionalStudentAuth = require('../middleware/optionalStudentAuth');
 const Form = require('../models/Form');
 const Response = require('../models/Response');
 const Student = require('../models/Student');
+const Faculty = require('../models/Faculty');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { decrypt } = require('../utils/encryption');
 
@@ -177,7 +178,7 @@ router.post('/submit/:link', studentAuth, async (req, res) => {
         const form = await Form.findOne({
             uniqueLink: req.params.link,
             isActive: true
-        }).populate('faculty', 'name department');
+        }).populate('faculty', 'name department geminiApiKey');
 
         if (!form) {
             return res.status(404).json({
@@ -271,8 +272,10 @@ router.post('/submit/:link', studentAuth, async (req, res) => {
         const rollNo = isAnonymous ? 'Hidden' : (student.rollNo || '');
 
         // --------------------------------------------------
-        // GEMINI SETUP — STRICTLY STUDENT API KEY ONLY
-        // Never exhaust faculty API key for student evaluations
+        // GEMINI SETUP FOR DESCRIPTIVE QUESTIONS ONLY
+        // 1. Primary: Student's own Gemini API key (saves faculty quota)
+        // 2. Fallback: Teacher's (Faculty's) Gemini API key (ensures descriptive answers are evaluated if student has not entered theirs)
+        // Note: Used ONLY for evaluating student's descriptive questions!
         // --------------------------------------------------
         let model = null;
         let aiKeySource = 'none';
@@ -284,13 +287,34 @@ router.post('/submit/:link', studentAuth, async (req, res) => {
                     const genAI = new GoogleGenerativeAI(decryptedStudentKey);
                     model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite' });
                     aiKeySource = 'student';
-                } catch {
+                } catch (e) {
+                    console.warn('Student Gemini API key initialization failed:', e.message);
                     model = null;
                 }
             }
         }
 
-        // Notice: NO FALLBACK TO FACULTY API KEY!
+        // If student does not have an API key, fallback to teacher's Gemini key for descriptive questions
+        if (!model) {
+            let facultyKey = form.faculty?.geminiApiKey;
+            if (!facultyKey && form.faculty?._id) {
+                const facDoc = await Faculty.findById(form.faculty._id).select('geminiApiKey');
+                facultyKey = facDoc?.geminiApiKey;
+            }
+            if (facultyKey) {
+                const decryptedFacultyKey = decrypt(facultyKey);
+                if (decryptedFacultyKey) {
+                    try {
+                        const genAI = new GoogleGenerativeAI(decryptedFacultyKey);
+                        model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite' });
+                        aiKeySource = 'faculty';
+                    } catch (e) {
+                        console.warn('Faculty Gemini API key initialization failed:', e.message);
+                        model = null;
+                    }
+                }
+            }
+        }
 
         // --------------------------------------------------
         // CREATE BASE ANSWERS
