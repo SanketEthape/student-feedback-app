@@ -723,28 +723,10 @@ Use exactly this format:
 
 
         // ======================================================
-        // OVERALL RECOMMENDATION
+        // OVERALL RECOMMENDATION (disabled - no unnecessary text/tokens)
         // ======================================================
 
-        let recommendation = '';
-
-        if (overallLevel === 'Good Understanding') {
-
-            recommendation =
-                `Great work, ${studentName}! You have demonstrated good overall understanding of ${form.subject}. Continue practicing and focus on strengthening the few areas where your confidence or answers were weaker.`;
-        }
-
-        else if (overallLevel === 'Average Understanding') {
-
-            recommendation =
-                `You have a basic understanding of ${form.subject}, but some concepts need more practice. Focus on the weak topics, review the recommended resources, and attempt similar questions again.`;
-        }
-
-        else {
-
-            recommendation =
-                `You need more practice in ${form.subject}. Start with the basic concepts, review the recommended learning resources, and practice questions topic by topic before attempting another assessment.`;
-        }
+        const recommendation = '';
 
 
         // ======================================================
@@ -948,10 +930,9 @@ router.get(
             // Student identity is revealed if and only if form.allowAnonymous is false.
             const sanitizedResponses = responses.map(r => {
                 const doc = r.toObject ? r.toObject() : { ...r };
+                // Strip recommendations from faculty response view
+                doc.recommendation = '';
                 if (form.allowAnonymous || doc.isAnonymous) {
-                    if (doc.recommendation && doc.studentName && doc.studentName !== 'Anonymous' && doc.studentName !== 'Anonymous Student') {
-                        doc.recommendation = doc.recommendation.replace(new RegExp(`Great work, ${doc.studentName}!`, 'g'), 'Great work, Student!');
-                    }
                     doc.studentName = 'Anonymous Student';
                     doc.rollNo = '';
                     doc.student = null;

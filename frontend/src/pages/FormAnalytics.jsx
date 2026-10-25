@@ -1275,7 +1275,7 @@ export default function FormAnalytics() {
                                     </div>
                                     <span style={{ color: 'var(--muted)', fontSize: 13 }}>{new Date(r.submittedAt).toLocaleString()}</span>
                                 </div>
-                                <div style={{ display: 'flex', gap: 8, marginBottom: r.recommendation ? 12 : 0, flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                     {r.answers.map((a, i) => (
                                         <span key={i} className={`tag ${a.isCorrect === true ? 'tag-active' : a.isCorrect === false ? 'tag-inactive' : ''}`}
                                             style={{ background: a.isCorrect === null ? 'rgba(79,110,247,0.1)' : undefined, color: a.isCorrect === null ? 'var(--accent)' : undefined }}>
@@ -1283,11 +1283,6 @@ export default function FormAnalytics() {
                                         </span>
                                     ))}
                                 </div>
-                                {r.recommendation && (
-                                    <div style={{ background: 'rgba(79,110,247,0.06)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--text)', lineHeight: 1.6, border: '1px solid rgba(79,110,247,0.12)' }}>
-                                        <strong>💡 Recommendation:</strong> {r.recommendation}
-                                    </div>
-                                )}
                             </div>
                         ))}
                 </div>
