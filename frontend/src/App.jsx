@@ -11,6 +11,8 @@ import Navbar from './components/Navbar';
 import StudentLogin from './pages/StudentLogin';
 import StudentRegister from './pages/StudentRegister';
 import StudentDashboard from './pages/StudentDashboard';
+import AdminDashboard from './pages/AdminDashboard';
+import AdminNavbar from './components/AdminNavbar';
 
 // Faculty protected route
 const Protected = ({ children }) => {
@@ -22,6 +24,11 @@ const StudentProtected = ({ children }) => {
   return localStorage.getItem('studentToken') ? children : <Navigate to="/student/login" />;
 };
 
+// Admin protected route
+const AdminProtected = ({ children }) => {
+  return localStorage.getItem('adminToken') ? children : <Navigate to="/login" />;
+};
+
 const FacultyLayout = ({ children }) => (
   <Protected>
     <Navbar />
@@ -29,6 +36,15 @@ const FacultyLayout = ({ children }) => (
       {children}
     </div>
   </Protected>
+);
+
+const AdminLayout = ({ children }) => (
+  <AdminProtected>
+    <AdminNavbar />
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 16px' }}>
+      {children}
+    </div>
+  </AdminProtected>
 );
 
 export default function App() {
@@ -61,6 +77,9 @@ export default function App() {
         <Route path="/create" element={<FacultyLayout><CreateForm /></FacultyLayout>} />
         <Route path="/analytics/:id" element={<FacultyLayout><FormAnalytics /></FacultyLayout>} />
         <Route path="/settings" element={<FacultyLayout><Settings /></FacultyLayout>} />
+
+        {/* Admin Protected Routes */}
+        <Route path="/admin" element={<AdminLayout><AdminDashboard /></AdminLayout>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

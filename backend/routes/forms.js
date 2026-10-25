@@ -13,7 +13,7 @@ const { decrypt } = require('../utils/encryption');
 
 router.post('/generate', auth, async (req, res) => {
     try {
-        const { title, subject, syllabus } = req.body;
+        const { title, subject, syllabus, unit } = req.body;
 
         // Parse question type counts
         const reqMcq = req.body.mcqCount !== undefined ? parseInt(req.body.mcqCount, 10) : 6;
@@ -441,6 +441,7 @@ Use this exact structure:
             faculty: req.faculty.id,
             title,
             subject,
+            unit: (unit && unit.trim()) ? unit.trim() : (title || ''),
             syllabus,
             questions: validatedQuestions,
             topicResources

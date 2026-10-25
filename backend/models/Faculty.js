@@ -7,6 +7,7 @@ const FacultySchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     department: { type: String },
+    isAdmin: { type: Boolean, default: false },
     // Stored AES-256 encrypted (iv:ciphertext)
     geminiApiKey: { type: String, default: '' },
     createdAt: { type: Date, default: Date.now }

@@ -1,15 +1,62 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
+import { DEPARTMENTS, DEPARTMENT_SUBJECTS } from '../data/curriculum';
 
 export default function CreateForm() {
-    const [form, setForm] = useState({ title: '', subject: '', syllabus: '' });
+    const faculty = JSON.parse(localStorage.getItem('faculty') || '{}');
+    const defaultDept = DEPARTMENTS.includes(faculty.department) ? faculty.department : 'Computer Engineering';
+    
+    const [selectedDept, setSelectedDept] = useState(defaultDept);
+    const [subjectSearch, setSubjectSearch] = useState('');
+    const [unit, setUnit] = useState('Unit 1');
+    const [form, setForm] = useState({
+        title: `${DEPARTMENT_SUBJECTS[defaultDept]?.[0] || 'Subject'} - Unit 1`,
+        subject: DEPARTMENT_SUBJECTS[defaultDept]?.[0] || '',
+        unit: 'Unit 1',
+        syllabus: ''
+    });
+
     const [mcqCount, setMcqCount] = useState(6);
     const [textCount, setTextCount] = useState(2);
     const [scaleCount, setScaleCount] = useState(2);
     const [loading, setLoading] = useState(false);
     const [err, setErr] = useState('');
     const navigate = useNavigate();
+
+    // Filter subjects for the selected department
+    const deptSubjects = DEPARTMENT_SUBJECTS[selectedDept] || [];
+    const filteredSubjects = deptSubjects.filter(s =>
+        s.toLowerCase().includes(subjectSearch.toLowerCase())
+    );
+
+    const onDepartmentChange = (dept) => {
+        setSelectedDept(dept);
+        const firstSubject = DEPARTMENT_SUBJECTS[dept]?.[0] || '';
+        setForm(prev => ({
+            ...prev,
+            subject: firstSubject,
+            title: `${firstSubject} - ${unit}`
+        }));
+        setSubjectSearch('');
+    };
+
+    const onSubjectSelect = (subj) => {
+        setForm(prev => ({
+            ...prev,
+            subject: subj,
+            title: `${subj} - ${unit}`
+        }));
+    };
+
+    const onUnitChange = (u) => {
+        setUnit(u);
+        setForm(prev => ({
+            ...prev,
+            unit: u,
+            title: `${prev.subject || 'Subject'} - ${u}`
+        }));
+    };
 
     const totalQuestions = (parseInt(mcqCount) || 0) + (parseInt(textCount) || 0) + (parseInt(scaleCount) || 0);
 
@@ -22,6 +69,11 @@ export default function CreateForm() {
     const submit = async e => {
         e.preventDefault();
         setErr('');
+
+        if (!form.subject) {
+            setErr('Please select a subject from the list.');
+            return;
+        }
 
         if (totalQuestions <= 0) {
             setErr('Please select at least 1 question to generate.');
@@ -37,6 +89,7 @@ export default function CreateForm() {
         try {
             const payload = {
                 ...form,
+                unit: unit.trim(),
                 mcqCount: parseInt(mcqCount) || 0,
                 textCount: parseInt(textCount) || 0,
                 scaleCount: parseInt(scaleCount) || 0
@@ -51,10 +104,10 @@ export default function CreateForm() {
     };
 
     return (
-        <div style={{ maxWidth: 720 }}>
+        <div style={{ maxWidth: 760 }}>
             <h2 style={{ marginBottom: 8 }}>Create Assessment & Feedback Form</h2>
             <p style={{ color: 'var(--muted)', marginBottom: 28, fontSize: 14 }}>
-                Paste your unit syllabus and customize how many objective and descriptive questions AI will generate.
+                Select your subject and unit, paste the syllabus topics covered, and customize the question distribution.
             </p>
 
             {err && (
@@ -69,22 +122,107 @@ export default function CreateForm() {
 
             <div className="card">
                 <form onSubmit={submit}>
+                    {/* Department and Standard Subject Selection */}
+                    <div style={{
+                        background: '#f8fafc',
+                        border: '1px solid var(--border)',
+                        borderRadius: 10,
+                        padding: '16px 18px',
+                        marginBottom: 20
+                    }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                            <div>
+                                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 6 }}>
+                                    🏛️ Department *
+                                </label>
+                                <select
+                                    value={selectedDept}
+                                    onChange={e => onDepartmentChange(e.target.value)}
+                                    style={{ background: '#fff', fontSize: 13, width: '100%' }}
+                                >
+                                    {DEPARTMENTS.map(d => (
+                                        <option key={d} value={d}>{d}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 6 }}>
+                                    📖 Unit / Module *
+                                </label>
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                    <select
+                                        value={unit.startsWith('Unit ') ? unit : 'Custom'}
+                                        onChange={e => {
+                                            if (e.target.value !== 'Custom') onUnitChange(e.target.value);
+                                        }}
+                                        style={{ background: '#fff', fontSize: 13, minWidth: 100 }}
+                                    >
+                                        <option value="Unit 1">Unit 1</option>
+                                        <option value="Unit 2">Unit 2</option>
+                                        <option value="Unit 3">Unit 3</option>
+                                        <option value="Unit 4">Unit 4</option>
+                                        <option value="Unit 5">Unit 5</option>
+                                        <option value="Unit 6">Unit 6</option>
+                                        <option value="Custom">Custom</option>
+                                    </select>
+                                    <input
+                                        value={unit}
+                                        onChange={e => onUnitChange(e.target.value)}
+                                        placeholder="e.g. Unit 1: Introduction"
+                                        required
+                                        style={{ fontSize: 13, flex: 1 }}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Standardized Subject Selection */}
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                                    📚 Standardized Subject *
+                                </label>
+                                <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                                    Curriculum list prevents spelling variations
+                                </span>
+                            </div>
+
+                            <div style={{ marginBottom: 8 }}>
+                                <input
+                                    type="text"
+                                    value={subjectSearch}
+                                    onChange={e => setSubjectSearch(e.target.value)}
+                                    placeholder="🔍 Search or filter subjects in this department..."
+                                    style={{ fontSize: 13, background: '#fff', marginBottom: 6 }}
+                                />
+                            </div>
+
+                            <select
+                                value={form.subject}
+                                onChange={e => onSubjectSelect(e.target.value)}
+                                required
+                                style={{ background: '#fff', fontSize: 13, width: '100%', fontWeight: 500 }}
+                            >
+                                <option value="" disabled>-- Select a Subject --</option>
+                                {filteredSubjects.map(s => (
+                                    <option key={s} value={s}>{s}</option>
+                                ))}
+                            </select>
+                            {filteredSubjects.length === 0 && (
+                                <p style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4 }}>
+                                    No subjects match &quot;{subjectSearch}&quot;. Please clear search or select from department list.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+
                     <div style={{ marginBottom: 16 }}>
                         <label style={{ fontSize: 13, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Form Title</label>
                         <input
                             value={form.title}
                             onChange={e => setForm({ ...form, title: e.target.value })}
-                            placeholder="e.g. Unit 3 Feedback - Data Structures"
-                            required
-                        />
-                    </div>
-
-                    <div style={{ marginBottom: 16 }}>
-                        <label style={{ fontSize: 13, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Subject</label>
-                        <input
-                            value={form.subject}
-                            onChange={e => setForm({ ...form, subject: e.target.value })}
-                            placeholder="e.g. Data Structures and Algorithms"
+                            placeholder="e.g. Data Structures - Unit 1"
                             required
                         />
                     </div>

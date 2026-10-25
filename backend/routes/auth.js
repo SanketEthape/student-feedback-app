@@ -23,8 +23,18 @@ router.post('/login', async (req, res) => {
         const faculty = await Faculty.findOne({ email });
         if (!faculty || !(await faculty.comparePassword(password)))
             return res.status(401).json({ message: 'Invalid credentials' });
-        const token = jwt.sign({ id: faculty._id, role: 'faculty' }, process.env.JWT_SECRET, { expiresIn: '7d' });
-        res.json({ token, faculty: { id: faculty._id, name: faculty.name, email: faculty.email, department: faculty.department } });
+        const role = faculty.isAdmin ? 'admin' : 'faculty';
+        const token = jwt.sign({ id: faculty._id, role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+        res.json({
+            token,
+            faculty: {
+                id: faculty._id,
+                name: faculty.name,
+                email: faculty.email,
+                department: faculty.department,
+                isAdmin: !!faculty.isAdmin
+            }
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

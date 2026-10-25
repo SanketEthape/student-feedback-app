@@ -21,4 +21,11 @@ studentApi.interceptors.request.use(cfg => {
   return cfg;
 });
 
+export const adminApi = axios.create({ baseURL: BASE });
+adminApi.interceptors.request.use(cfg => {
+  const token = localStorage.getItem('adminToken');
+  if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  return cfg;
+});
+
 export default api;

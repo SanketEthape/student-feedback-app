@@ -6,8 +6,8 @@ module.exports = (req, res, next) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         // Accept tokens with role:'faculty' OR old tokens with no role (pre-update tokens are always faculty)
-        // Only explicitly reject student tokens
-        if (decoded.role === 'student') {
+        // Only faculty can access faculty endpoints (reject student and admin)
+        if (decoded.role === 'student' || decoded.role === 'admin') {
             return res.status(403).json({ message: 'Access denied. Faculty account required.' });
         }
         req.faculty = decoded;

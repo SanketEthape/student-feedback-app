@@ -71,6 +71,7 @@ app.use('/api/forms', require('./routes/forms'));
 app.use('/api/responses', require('./routes/responses'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/admin', require('./routes/admin'));
 
 
 // Database Connection & Server Startup

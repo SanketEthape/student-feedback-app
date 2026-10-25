@@ -12,9 +12,15 @@ export default function Login() {
         e.preventDefault(); setErr(''); setLoading(true);
         try {
             const { data } = await api.post('/auth/login', form);
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('faculty', JSON.stringify(data.faculty));
-            navigate('/dashboard');
+            if (data.faculty?.isAdmin) {
+                localStorage.setItem('adminToken', data.token);
+                localStorage.setItem('adminUser', JSON.stringify(data.faculty));
+                navigate('/admin');
+            } else {
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('faculty', JSON.stringify(data.faculty));
+                navigate('/dashboard');
+            }
         } catch (e) { setErr(e.response?.data?.message || 'Login failed'); }
         finally { setLoading(false); }
     };
