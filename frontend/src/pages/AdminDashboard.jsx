@@ -126,43 +126,241 @@ export default function AdminDashboard() {
         );
     };
 
-    // Copy text handover report for next batch teachers
-    const copyHandoverReport = () => {
-        if (!topicsData) return;
-        const easyTopics = topicsData.topics.filter(t => t.totalAnswers > 0 && t.avgUnderstanding >= 60);
-        const hardTopics = topicsData.topics.filter(t => t.totalAnswers > 0 && t.avgUnderstanding < 60);
-        const unattempted = topicsData.topics.filter(t => t.totalAnswers === 0);
+    // ==============================================================
+    // CSV / EXCEL HANDOVER REPORT DOWNLOAD UTILITY
+    // ==============================================================
+    const downloadCSV = (filename, headers, rows) => {
+        const escapeCell = (cell) => {
+            if (cell === null || cell === undefined) return '""';
+            const str = String(cell).replace(/"/g, '""');
+            return `"${str}"`;
+        };
 
+        // UTF-8 BOM (\uFEFF) ensures Excel opens special characters, accents & symbols properly
+        const csvContent = '\uFEFF' + [
+            headers.map(escapeCell).join(','),
+            ...rows.map(row => row.map(escapeCell).join(','))
+        ].join('\r\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
+    // Export Handover Report as CSV / Excel at any level (Subject, Unit, Topic)
+    const exportHandoverCSV = () => {
+        const dateStr = new Date().toISOString().slice(0, 10);
+
+        if (level === 'subjects') {
+            if (!subjects || subjects.length === 0) return;
+            const headers = [
+                'Subject Name',
+                'Units (Forms) Count',
+                'Evaluated Student Responses',
+                'Average Understanding (%)',
+                'Classification',
+                'Next-Batch Faculty Handover Recommendation'
+            ];
+            const rows = subjects.map(s => {
+                const hasData = s.totalResponses > 0;
+                const isEasy = s.avgUnderstanding >= 60;
+                const classification = !hasData ? 'No Data Yet' : isEasy ? 'Easy to Understand' : 'Challenging to Understand';
+                const recommendation = !hasData
+                    ? 'No assessment data recorded yet.'
+                    : isEasy
+                    ? 'Strong overall understanding (>=60%). Proceed with standard curriculum pacing.'
+                    : 'Challenging curriculum areas detected (<60%). Recommend scheduling foundation review lectures for next batch.';
+                return [
+                    s.subject,
+                    s.totalUnits,
+                    s.totalResponses,
+                    hasData ? `${s.avgUnderstanding}%` : '—',
+                    classification,
+                    recommendation
+                ];
+            });
+            downloadCSV(`Academic_Handover_Subjects_Overall_${dateStr}.csv`, headers, rows);
+        } else if (level === 'units') {
+            if (!units || units.length === 0) return;
+            const headers = [
+                'Subject',
+                'Unit / Module',
+                'Assessment Form Title',
+                'Student Evaluations',
+                'Average Understanding (%)',
+                'Classification',
+                'Next-Batch Faculty Handover Recommendation'
+            ];
+            const rows = units.map(u => {
+                const hasData = u.totalResponses > 0;
+                const isEasy = u.avgUnderstanding >= 60;
+                const classification = !hasData ? 'No Data Yet' : isEasy ? 'Easy to Understand' : 'Challenging to Understand';
+                const recommendation = !hasData
+                    ? 'No responses submitted yet.'
+                    : isEasy
+                    ? 'Unit concepts well understood (>=60%). Proceed with standard lecture allocation.'
+                    : 'Unit identified as challenging (<60%). Next batch teachers should allocate extra revision and practical problem-solving.';
+                return [
+                    selectedSubject || 'Subject',
+                    u.unitName,
+                    u.title,
+                    u.totalResponses,
+                    hasData ? `${u.avgUnderstanding}%` : '—',
+                    classification,
+                    recommendation
+                ];
+            });
+            const safeSub = (selectedSubject || 'Subject').replace(/[^a-zA-Z0-9_-]/g, '_');
+            downloadCSV(`Academic_Handover_${safeSub}_Units_${dateStr}.csv`, headers, rows);
+        } else if (level === 'topics') {
+            if (!topicsData || !topicsData.topics || topicsData.topics.length === 0) return;
+            const headers = [
+                'Subject',
+                'Unit / Module',
+                'Topic Name',
+                'Evaluated Answers',
+                'Average Understanding (%)',
+                'Classification',
+                'Next-Batch Teacher Handover Note'
+            ];
+            const rows = topicsData.topics.map(t => {
+                const hasData = t.totalAnswers > 0;
+                const isEasy = t.avgUnderstanding >= 60;
+                const classification = !hasData ? 'No Data Yet' : isEasy ? 'Easy to Understand' : 'Challenging to Understand';
+                const recommendation = !hasData
+                    ? 'No responses recorded yet.'
+                    : isEasy
+                    ? 'Concepts well understood (>=60%). Proceed as standard curriculum.'
+                    : 'High confusion rate detected (<60%). Recommend early remedial lectures, visual aids, and focused practice.';
+                return [
+                    topicsData.subject || selectedSubject || 'Subject',
+                    topicsData.unitName || selectedUnit?.unitName || 'Unit',
+                    t.topic,
+                    t.totalAnswers,
+                    hasData ? `${t.avgUnderstanding}%` : '—',
+                    classification,
+                    recommendation
+                ];
+            });
+            const safeSub = (topicsData.subject || selectedSubject || 'Subject').replace(/[^a-zA-Z0-9_-]/g, '_');
+            const safeUnit = (topicsData.unitName || selectedUnit?.unitName || 'Unit').replace(/[^a-zA-Z0-9_-]/g, '_');
+            downloadCSV(`Academic_Handover_${safeSub}_${safeUnit}_Topics_${dateStr}.csv`, headers, rows);
+        }
+    };
+
+    // Copy text handover report for next batch teachers at any level
+    const copyHandoverReportText = () => {
         let report = `========================================================\n`;
         report += `ACADEMIC HANDOVER REPORT FOR NEXT BATCH FACULTY\n`;
-        report += `Subject: ${topicsData.subject}\n`;
-        report += `Unit:    ${topicsData.unitName}\n`;
-        report += `Evaluated Student Responses: ${topicsData.totalResponses}\n`;
-        report += `========================================================\n\n`;
 
-        report += `🔴 CHALLENGING TOPICS (Requires focused revision & drills):\n`;
-        if (hardTopics.length === 0) {
-            report += `  - None. Students grasped all topics above 60%.\n`;
-        } else {
-            hardTopics.forEach(t => {
-                report += `  • ${t.topic}: Avg Understanding ${t.avgUnderstanding}% (${t.totalAnswers} evaluations)\n`;
-            });
-        }
+        if (level === 'subjects') {
+            report += `Level:   Overall Curriculum (All Subjects)\n`;
+            report += `Monitored Subjects: ${subjects.length}\n`;
+            report += `========================================================\n\n`;
 
-        report += `\n🟢 EASY TO UNDERSTAND TOPICS (Strong baseline understanding):\n`;
-        if (easyTopics.length === 0) {
-            report += `  - None scored 60% or higher.\n`;
-        } else {
-            easyTopics.forEach(t => {
-                report += `  • ${t.topic}: Avg Understanding ${t.avgUnderstanding}% (${t.totalAnswers} evaluations)\n`;
-            });
-        }
+            const easySubs = subjects.filter(s => s.totalResponses > 0 && s.avgUnderstanding >= 60);
+            const hardSubs = subjects.filter(s => s.totalResponses > 0 && s.avgUnderstanding < 60);
+            const unattempted = subjects.filter(s => s.totalResponses === 0);
 
-        if (unattempted.length > 0) {
-            report += `\n⚪ UNTESTED / PENDING TOPICS:\n`;
-            unattempted.forEach(t => {
-                report += `  • ${t.topic} (No student responses recorded yet)\n`;
-            });
+            report += `🔴 CHALLENGING SUBJECTS (<60% Avg — Needs Extra Support):\n`;
+            if (hardSubs.length === 0) {
+                report += `  - None. All assessed subjects scored 60% or higher.\n`;
+            } else {
+                hardSubs.forEach(s => {
+                    report += `  • ${s.subject}: ${s.avgUnderstanding}% Avg (${s.totalUnits} units, ${s.totalResponses} evaluations)\n`;
+                });
+            }
+
+            report += `\n🟢 EASY TO UNDERSTAND SUBJECTS (>=60% Avg — Good Grasp):\n`;
+            if (easySubs.length === 0) {
+                report += `  - None scored 60% or higher.\n`;
+            } else {
+                easySubs.forEach(s => {
+                    report += `  • ${s.subject}: ${s.avgUnderstanding}% Avg (${s.totalUnits} units, ${s.totalResponses} evaluations)\n`;
+                });
+            }
+
+            if (unattempted.length > 0) {
+                report += `\n⚪ PENDING SUBJECTS (No Evaluations):\n`;
+                unattempted.forEach(s => {
+                    report += `  • ${s.subject}: ${s.totalUnits} units (no responses yet)\n`;
+                });
+            }
+        } else if (level === 'units') {
+            report += `Subject: ${selectedSubject}\n`;
+            report += `Level:   Unit-Wise Breakdown\n`;
+            report += `Total Units: ${units.length}\n`;
+            report += `========================================================\n\n`;
+
+            const easyUnits = units.filter(u => u.totalResponses > 0 && u.avgUnderstanding >= 60);
+            const hardUnits = units.filter(u => u.totalResponses > 0 && u.avgUnderstanding < 60);
+            const unattempted = units.filter(u => u.totalResponses === 0);
+
+            report += `🔴 CHALLENGING UNITS (<60% Avg — Next Batch Focus):\n`;
+            if (hardUnits.length === 0) {
+                report += `  - None. Students grasped all units above 60%.\n`;
+            } else {
+                hardUnits.forEach(u => {
+                    report += `  • ${u.unitName} (${u.title}): ${u.avgUnderstanding}% Avg (${u.totalResponses} evaluations)\n`;
+                });
+            }
+
+            report += `\n🟢 EASY TO UNDERSTAND UNITS (>=60% Avg):\n`;
+            if (easyUnits.length === 0) {
+                report += `  - None scored 60% or higher.\n`;
+            } else {
+                easyUnits.forEach(u => {
+                    report += `  • ${u.unitName} (${u.title}): ${u.avgUnderstanding}% Avg (${u.totalResponses} evaluations)\n`;
+                });
+            }
+
+            if (unattempted.length > 0) {
+                report += `\n⚪ PENDING UNITS (No Evaluations):\n`;
+                unattempted.forEach(u => {
+                    report += `  • ${u.unitName} (${u.title})\n`;
+                });
+            }
+        } else if (level === 'topics') {
+            if (!topicsData) return;
+            report += `Subject: ${topicsData.subject}\n`;
+            report += `Unit:    ${topicsData.unitName}\n`;
+            report += `Evaluated Student Responses: ${topicsData.totalResponses}\n`;
+            report += `========================================================\n\n`;
+
+            const easyTopics = topicsData.topics.filter(t => t.totalAnswers > 0 && t.avgUnderstanding >= 60);
+            const hardTopics = topicsData.topics.filter(t => t.totalAnswers > 0 && t.avgUnderstanding < 60);
+            const unattempted = topicsData.topics.filter(t => t.totalAnswers === 0);
+
+            report += `🔴 CHALLENGING TOPICS (Requires focused revision & drills):\n`;
+            if (hardTopics.length === 0) {
+                report += `  - None. Students grasped all topics above 60%.\n`;
+            } else {
+                hardTopics.forEach(t => {
+                    report += `  • ${t.topic}: Avg Understanding ${t.avgUnderstanding}% (${t.totalAnswers} evaluations)\n`;
+                });
+            }
+
+            report += `\n🟢 EASY TO UNDERSTAND TOPICS (Strong baseline understanding):\n`;
+            if (easyTopics.length === 0) {
+                report += `  - None scored 60% or higher.\n`;
+            } else {
+                easyTopics.forEach(t => {
+                    report += `  • ${t.topic}: Avg Understanding ${t.avgUnderstanding}% (${t.totalAnswers} evaluations)\n`;
+                });
+            }
+
+            if (unattempted.length > 0) {
+                report += `\n⚪ UNTESTED / PENDING TOPICS:\n`;
+                unattempted.forEach(t => {
+                    report += `  • ${t.topic} (No student responses recorded yet)\n`;
+                });
+            }
         }
 
         report += `\nGenerated via EduPulse Academic Administration.`;
@@ -229,7 +427,7 @@ export default function AdminDashboard() {
                         </p>
                     </div>
 
-                    <div style={{ display: 'flex', gap: 10 }}>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                         {level !== 'subjects' && (
                             <button
                                 className="btn btn-secondary"
@@ -242,15 +440,24 @@ export default function AdminDashboard() {
                                 ← Back to {level === 'topics' ? 'Units' : 'Subjects'}
                             </button>
                         )}
-                        {level === 'topics' && (
-                            <button
-                                className="btn btn-primary"
-                                style={{ fontSize: 13 }}
-                                onClick={copyHandoverReport}
-                            >
-                                {copiedReport ? '✓ Report Copied!' : '📋 Copy Handover Report'}
-                            </button>
-                        )}
+                        <button
+                            className="btn btn-primary"
+                            style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+                            onClick={exportHandoverCSV}
+                            title="Download formatted CSV spreadsheet compatible with Excel / Google Sheets"
+                        >
+                            <span>📥</span>
+                            <span>Download {level === 'subjects' ? 'Subjects' : level === 'units' ? 'Units' : 'Topics'} CSV / Excel</span>
+                        </button>
+                        <button
+                            className="btn btn-secondary"
+                            style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+                            onClick={copyHandoverReportText}
+                            title="Copy text summary to clipboard"
+                        >
+                            <span>{copiedReport ? '✓' : '📋'}</span>
+                            <span>{copiedReport ? 'Report Copied!' : 'Copy Summary'}</span>
+                        </button>
                     </div>
                 </div>
             </div>
