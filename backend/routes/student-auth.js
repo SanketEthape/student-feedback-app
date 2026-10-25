@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const Student = require('../models/Student');
 const studentAuth = require('../middleware/studentAuth');
 const { encrypt, decrypt } = require('../utils/encryption');
+const { syncNotificationsForStudent } = require('../utils/notificationSync');
 
 // ======================================================
 // REGISTER
@@ -32,6 +33,9 @@ router.post('/register', async (req, res) => {
             division: targetDiv,
             branch: targetBranch
         });
+
+        // Auto-sync notifications for newly registered student
+        await syncNotificationsForStudent(student._id);
 
         const token = jwt.sign(
             { id: student._id, role: 'student' },
@@ -67,6 +71,9 @@ router.post('/login', async (req, res) => {
         if (!student || !(await student.comparePassword(password))) {
             return res.status(401).json({ message: 'Invalid email or password' });
         }
+        // Auto-sync notifications on login
+        await syncNotificationsForStudent(student._id);
+
         const token = jwt.sign(
             { id: student._id, role: 'student' },
             process.env.JWT_SECRET,
@@ -172,6 +179,9 @@ router.put('/profile', studentAuth, async (req, res) => {
         }
 
         await student.save();
+
+        // Auto-sync notifications in case class/division/branch changed
+        await syncNotificationsForStudent(student._id);
 
         res.json({
             message: 'Profile updated successfully',

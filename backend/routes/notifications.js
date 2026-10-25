@@ -1,12 +1,16 @@
 const router = require('express').Router();
 const studentAuth = require('../middleware/studentAuth');
 const Notification = require('../models/Notification');
+const { syncNotificationsForStudent } = require('../utils/notificationSync');
 
 // ======================================================
 // GET ALL NOTIFICATIONS FOR LOGGED-IN STUDENT
 // ======================================================
 router.get('/my', studentAuth, async (req, res) => {
     try {
+        // Auto-sync notifications against all published forms matching student's class/div/branch
+        await syncNotificationsForStudent(req.student.id);
+
         const notifications = await Notification.find({ student: req.student.id })
             .populate({
                 path: 'form',
