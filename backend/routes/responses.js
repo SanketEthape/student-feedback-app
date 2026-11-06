@@ -1081,6 +1081,7 @@ For each question:
 - Make the question clear, engaging, and directly focused on ${cleanTopic}.
 - Provide exactly 4 options.
 - Indicate the 0-based index of the correct option (0, 1, 2, or 3).
+- IMPORTANT: Randomize the correct option index (0, 1, 2, or 3) across the questions so the correct answer is not always Option A (index 0).
 - Provide a clear, educational explanation of why the correct answer is right and common pitfalls to avoid.
 - Provide a 1-sentence "keyTakeaway".
 
@@ -1092,7 +1093,7 @@ Return ONLY valid JSON matching this exact structure:
       "id": 1,
       "question": "string",
       "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
-      "correctIndex": 0,
+      "correctIndex": 2,
       "explanation": "string",
       "keyTakeaway": "string"
     }

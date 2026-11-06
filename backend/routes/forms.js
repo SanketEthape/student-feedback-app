@@ -7,6 +7,16 @@ const Notification = require('../models/Notification');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { decrypt } = require('../utils/encryption');
 
+// Fisher-Yates shuffle algorithm to randomly shuffle array elements
+function shuffleArray(array) {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+}
+
 // ======================================================
 // Generate questions from syllabus using Gemini
 // ======================================================
@@ -111,8 +121,7 @@ GENERAL RULES
 MCQ RULES
 ==================================================
 
-For exactly 6 questions:
-
+${numMcq > 0 ? `For exactly ${numMcq} questions:\n` : ''}
 "type": "mcq"
 
 Each MCQ must contain:
@@ -121,6 +130,7 @@ Each MCQ must contain:
 - exactly 1 correct option
 - correctOption
 - short student-friendly explanation
+- CRITICAL: The correct option must be placed randomly among the 4 options (Option A, B, C, or D). Do NOT always make the first option the correct answer. Across all generated MCQs, distribute the correct answer positions evenly and randomly across options A, B, C, and D.
 
 Example:
 
@@ -129,9 +139,9 @@ Example:
     "question": "Which characteristic allows a cloud system to handle increasing workload by adding resources?",
     "type": "mcq",
     "options": [
-        "Scalability",
-        "Encryption",
         "Latency",
+        "Encryption",
+        "Scalability",
         "Virtualization"
     ],
     "correctOption": "Scalability",
@@ -142,8 +152,7 @@ Example:
 SCALE RULES
 ==================================================
 
-For exactly 2 questions:
-
+${numScale > 0 ? `For exactly ${numScale} questions:\n` : ''}
 "type": "scale"
 
 Use exactly:
@@ -176,8 +185,7 @@ Scale meaning:
 DESCRIPTIVE / TEXT RULES
 ==================================================
 
-For exactly 2 questions:
-
+${numText > 0 ? `For exactly ${numText} questions:\n` : ''}
 "type": "text"
 
 These questions must require the student to explain a concept in their own words.
@@ -363,6 +371,8 @@ Use this exact structure:
 
             // MCQ validation
             if (q.type === 'mcq') {
+                q.options = q.options.map(o => String(o).trim());
+                q.correctOption = String(q.correctOption).trim();
 
                 if (q.options.length !== 4) {
                     throw new Error(
@@ -381,6 +391,9 @@ Use this exact structure:
                         `MCQ question ${index + 1} has an invalid correctOption.`
                     );
                 }
+
+                // Randomly shuffle options so the correct answer is positioned randomly among options A, B, C, D
+                q.options = shuffleArray(q.options);
 
                 // MCQ does not need expectedAnswer
                 q.expectedAnswer = '';
@@ -676,7 +689,7 @@ Original type: "${currentQ.type}"
 
 CRITICAL INSTRUCTIONS:
 - Keep the same question type: "${currentQ.type}"
-- For MCQ: provide exactly 4 plausible options and one correctOption.
+- For MCQ: provide exactly 4 plausible options and one correctOption. Randomize the placement of correctOption among the options (do not always place it first).
 - For Scale: options must be ["1","2","3","4","5"], correctOption = "".
 - For Text: options = [], correctOption = "".
 - Do NOT use placeholder text. Use real content from the syllabus.
@@ -688,15 +701,21 @@ Return ONLY a single valid JSON object (NOT an array) with exactly these fields:
   "type": "${currentQ.type}",
   "options": [...],
   "correctOption": "..."
-}`;
+}
+`;
 
         const result = await model.generateContent(prompt);
         const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
         const newQ = JSON.parse(text);
 
         form.questions[idx].question = newQ.question;
-        form.questions[idx].options = newQ.options || [];
-        form.questions[idx].correctOption = newQ.correctOption || '';
+        const cleanedOpts = Array.isArray(newQ.options) ? newQ.options.map(o => String(o).trim()) : [];
+        if (form.questions[idx].type === 'mcq' && cleanedOpts.length > 0) {
+            form.questions[idx].options = shuffleArray(cleanedOpts);
+        } else {
+            form.questions[idx].options = cleanedOpts;
+        }
+        form.questions[idx].correctOption = (newQ.correctOption ? String(newQ.correctOption).trim() : '');
         form.questions[idx].isApproved = false; // reset approval after regeneration
         form.markModified('questions');
         await form.save();
@@ -889,21 +908,27 @@ Respond ONLY with a valid JSON object in this exact format (no markdown formatti
   "topic": "${targetTopic}",
   "question": "Clear and concise question text",
   "type": "${targetType}",
-  ${targetType === 'mcq' ? `"options": ["Option A", "Option B", "Option C", "Option D"],
-  "correctOption": "Option A",
+  ${targetType === 'mcq' ? `"options": ["Choice 1", "Choice 2", "Choice 3", "Choice 4"],
+  "correctOption": "Choice 3",
   "explanation": "Brief student explanation"` : targetType === 'text' ? `"expectedAnswer": "Key points to cover"` : `"options": ["1", "2", "3", "4", "5"]`}
-}`;
+}
+`;
 
         const aiRes = await model.generateContent(prompt);
         const text = aiRes.response.text().replace(/```json|```/g, '').trim();
         const parsed = JSON.parse(text);
+        const rawOpts = Array.isArray(parsed.options) ? parsed.options.map(o => String(o).trim()) : [];
 
         const newQ = {
             topic: parsed.topic || targetTopic,
             question: parsed.question,
             type: targetType,
-            options: targetType === 'mcq' ? (parsed.options || []) : targetType === 'scale' ? ['1', '2', '3', '4', '5'] : [],
-            correctOption: parsed.correctOption || '',
+            options: targetType === 'mcq'
+                ? (rawOpts.length > 0 ? shuffleArray(rawOpts) : [])
+                : targetType === 'scale'
+                    ? ['1', '2', '3', '4', '5']
+                    : [],
+            correctOption: parsed.correctOption ? String(parsed.correctOption).trim() : '',
             explanation: parsed.explanation || '',
             expectedAnswer: parsed.expectedAnswer || '',
             isApproved: true

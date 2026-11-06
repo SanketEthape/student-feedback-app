@@ -1,6 +1,16 @@
 # EduPulse — Student Feedback & Academic Comprehension Portal
 
-EduPulse is an AI-powered student assessment and continuous comprehension tracking system for engineering institutions. It enables faculty to generate unit-wise assessment forms from syllabus topics, collects objective and descriptive student responses, and provides deep curriculum analytics for academic handover.
+EduPulse is an AI-powered student assessment and continuous comprehension tracking system for engineering institutions. It enables faculty to generate unit-wise assessment forms from syllabus topics, collects objective and descriptive student responses, evaluates descriptive conceptual explanations using Google Gemini AI, and provides deep curriculum analytics for academic handover.
+
+---
+
+## 🌐 Live Hosted Application (Cloud Deployment)
+
+The project is hosted and accessible online:
+
+- **Live Web Application (Frontend)**: [https://student-feedback-frontend.onrender.com](https://student-feedback-frontend.onrender.com)
+- **Live API Service (Backend)**: [https://student-feedback-backend.onrender.com/api](https://student-feedback-backend.onrender.com/api)
+- **API Health Check**: [https://student-feedback-backend.onrender.com/health](https://student-feedback-backend.onrender.com/health)
 
 ---
 
@@ -38,9 +48,41 @@ To avoid spelling mismatches across faculty accounts (e.g., *"computer networks"
 
 ## 🛠️ Tech Stack & Architecture
 
-- **Frontend**: React 19, Vite, React Router 7, Recharts
+- **Frontend**: React 19, Vite, React Router 7, Recharts, Lucide Icons
 - **Backend**: Node.js, Express, MongoDB Atlas, Mongoose, JWT, bcryptjs
+- **Artificial Intelligence**: Google Gemini API (`gemini-1.5-flash`) for automated semantic grading
 - **Deployment**: Render (Web Service for Backend + Static Site for Frontend)
+
+---
+
+## 💻 Standalone Windows Desktop Application (`EduPulse.exe`)
+
+For submission and offline demonstration on Windows computers without installing Node.js, npm, or any dependencies, a standalone desktop application package is provided:
+
+- **Executable File**: `EduPulse-Windows-x64/EduPulse.exe` (~238 MB native binary)
+- **Portable Release Zip**: `EduPulse-Windows-x64.zip` (~184 MB)
+
+### How Faculty/Evaluators Run It:
+1. Extract `EduPulse-Windows-x64.zip` (or open the `EduPulse-Windows-x64` folder).
+2. Double-click **`EduPulse.exe`**.
+3. The standalone desktop application opens directly in its own native window with the backend server and React frontend running automatically.
+
+---
+
+## ⚡ Quick-Run Terminal Launchers (Linux & Windows Scripts)
+
+For evaluator review and submission testing, one-click executable launchers are provided:
+
+- **Linux / macOS**: Execute `./start.sh` (or double-click to run in terminal)
+  ```bash
+  ./start.sh
+  ```
+- **Windows**: Double-click `start.bat`
+  ```cmd
+  start.bat
+  ```
+
+Both launchers will automatically start the Backend API (Port 5000), serve the Frontend (Port 5173), and open the application in your default browser.
 
 ---
 
@@ -83,3 +125,4 @@ Environment variables required in Render Dashboard:
 - `MONGO_URI`: MongoDB connection string
 - `JWT_SECRET`: Secret key for JWT authentication
 - `ENCRYPTION_KEY`: 32-byte hex key for API key encryption
+- `GEMINI_API_KEY`: Google Gemini API key for question generation & descriptive answer grading
